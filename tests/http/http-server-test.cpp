@@ -16,7 +16,7 @@ TEST_CASE("http simple server", "[g6::net::http]") {
     inplace_stop_source stop_source{};
 
     auto server = make_server(ctx, web::proto::http, *net::ip_endpoint::from_string("127.0.0.1:0"));
-    auto server_endpoint = *server.local_endpoint();
+    auto server_endpoint = *server.socket.local_endpoint();
     spdlog::info("server listening at: {}", server_endpoint.to_string());
 
     sync_wait(when_all(
@@ -29,14 +29,15 @@ TEST_CASE("http simple server", "[g6::net::http]") {
                         spdlog::info("body: {}", sv_body);
                         REQUIRE(sv_body == "Hello !");
                     } while (!request);
-                    co_await net::async_send(session, http::status::ok, "OK !");
+                    co_await net::async_send(session, http::status::ok, as_bytes(span{"OK !", 4}));
                 };
             });
         }(),
         [&]() -> task<void> {
             scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
             auto session = co_await net::async_connect(ctx, web::proto::http, server_endpoint);
-            auto &response = co_await net::async_send(session, "/", http::method::post, "Hello !");
+            auto &response =
+                co_await net::async_send(session, "/", http::method::post, as_bytes(span{"Hello !", 7}));
 
             std::string body_str;
             while (!response) {
@@ -51,6 +52,4 @@ TEST_CASE("http simple server", "[g6::net::http]") {
             ctx.run(stop_source.get_token());
             co_return;
         }()));
-    // cleanup operation is not stoppable it must be done separately
-    sync_wait(cleanup(server));
 }

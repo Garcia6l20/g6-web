@@ -7,6 +7,8 @@
 #include <g6/net/ip_endpoint.hpp>
 #include <g6/net/tcp.hpp>
 
+#include <g6/ssl/async_socket.hpp>
+
 #include <g6/web/proto.hpp>
 #include <g6/web/web_cpo.hpp>
 
@@ -20,74 +22,92 @@
 
 namespace g6 {
 
-template <typename Context>
-auto tag_invoke(tag_t<make_server>, Context &, web::proto::http_ const &,
-                net::ip_endpoint endpoint);
+    template<typename Context>
+    auto tag_invoke(tag_t<make_server>, Context &, web::proto::http_ const &, net::ip_endpoint endpoint);
 
-namespace http {
+    template<typename Context>
+    auto tag_invoke(tag_t<make_server>, Context &ctx, web::proto::https_ const &, net::ip_endpoint endpoint,
+                    const auto &, const auto &);
 
-template <typename Context, typename Socket> class server {
-  Context &context_;
-  Socket socket_;
-  async_scope scope_{};
-  server(Context &context, Socket socket)
-      : context_{context}, socket_{std::move(socket)} {}
+    namespace http {
 
-public:
+        template<typename Context, typename Socket>
+        class server
+        {
+        protected:
+            Context &context_;
+            async_scope scope_{};
+            server(Context &context, Socket socket) : context_{context}, socket{std::move(socket)} {}
 
-  auto local_endpoint() const {
-    return socket_.local_endpoint();
-  }
+        public:
+            Socket socket;
 
-  template <typename Context2>
-  friend auto g6::tag_invoke(tag_t<make_server>, Context2 &,
-                             web::proto::http_ const &,
-                             net::ip_endpoint endpoint);
+            server() = delete;
+            server(server const &) = delete;
+            server(server &&) noexcept = default;
+            ~server() noexcept {
+              // cleanup operation is not stoppable it must be done separately
+              sync_wait(scope_.cleanup());
+            }
 
-  template <typename RequestHandlerBuilder>
-  friend auto tag_invoke(tag_t<async_serve>, server &&server, auto stop_token,
-                         RequestHandlerBuilder &&request_handler_builder) {
-    return with_query_value(let(just(),
-               [&] {
-                 return net::async_accept(server.socket_) |
-                        transform(
-                            [&scope = server.scope_, &ctx = server.context_,
-                             builder =
-                                 std::forward<RequestHandlerBuilder>(request_handler_builder)](
-                                auto peer, auto peer_address) {
-                              spdlog::info("Client connected: {}",
-                                           peer_address.to_string());
-                              scope.spawn(let(just(),
-                                              [session = std::make_shared<http::server_session<decltype(server.socket_)>>(
-                                                  std::move(peer), std::move(peer_address)),
-                                               builder =
-                                                   std::forward<decltype(builder)>(
-                                                       builder)] {
-                                                return let(just(), [&] {
-                                                  auto request_handler = builder(*session);
-                                                  return let(net::async_recv(*session), [session=session, request_handler](auto request) mutable {
+            template<typename Context2>
+            friend auto g6::tag_invoke(tag_t<make_server>, Context2 &, web::proto::http_ const &,
+                                       net::ip_endpoint endpoint);
+
+            template<typename Context2>
+            friend auto g6::tag_invoke(tag_t<make_server>, Context2 &ctx, web::proto::https_ const &, net::ip_endpoint,
+                                       const auto &, const auto &);
+
+            friend auto tag_invoke(tag_t<make_session>, http::server<Context, Socket> const &, Socket &&sock,
+                                   net::ip_endpoint &&endpoint) noexcept {
+                return just(
+                    server_session<Socket>{std::forward<Socket>(sock), std::forward<net::ip_endpoint>(endpoint)});
+            }
+
+            template<typename Server, typename RequestHandlerBuilder>
+            friend auto tag_invoke(tag_t<async_serve>, Server &server, inplace_stop_source &stop_source,
+                                         RequestHandlerBuilder &&request_handler_builder) {
+                auto receiver = transform(
+                    [&server = server, &scope = server.scope_, &ctx = server.context_, stop_source = &stop_source,
+                     builder = std::forward<RequestHandlerBuilder>(request_handler_builder)](auto result_tuple) {
+                        auto &[peer, peer_address] = result_tuple;
+                        spdlog::info("Client connected: {}", peer_address.to_string());
+                        scope.spawn(
+                            with_query_value(
+                                let(make_session(server, std::move(peer), std::move(peer_address)),
+                                    [stop_source, builder = std::forward<decltype(builder)>(builder)](auto &session) {
+                                        return let(just(), [&]() mutable {
+                                            auto request_handler = builder(session);
+                                            return let(//net::async_recv(*session),
+                                                net::async_recv(session), [request_handler](auto request) mutable {
                                                     return request_handler(request.get());
-                                                  });
                                                 });
-                                              }),
-                                          ctx.get_scheduler());
-                            });
-               }) |
-           repeat_effect_until([stop_token = stop_token]() {
-             return stop_token.stop_requested();
-           }) |
-           transform_done([] {
-             return just();
-           }), get_stop_token, stop_token);
-  }
-};
-} // namespace http
+                                        });
+                                    }),
+                                get_stop_token, stop_source->get_token()),
+                            ctx.get_scheduler());
+                    });
+                return with_query_value(
+                    let(just(),
+                        [stop_source = &stop_source, server = &server, receiver = std::move(receiver)] {
+                            return net::async_accept(server->socket) | std::move(receiver);
+                        })
+                        | repeat_effect() | transform_done([&]() noexcept { return just(); }),
+                    get_stop_token, stop_source.get_token());
+            }
+        };
+    }// namespace http
 
-template <typename Context>
-auto tag_invoke(tag_t<make_server>, Context &ctx, web::proto::http_ const &,
-                net::ip_endpoint endpoint) {
-  auto socket = net::open_socket(ctx, net::tcp_server, std::move(endpoint));
-  return http::server{ctx, std::move(socket)};
-}
+    template<typename Context>
+    auto tag_invoke(tag_t<make_server>, Context &ctx, web::proto::http_ const &, net::ip_endpoint endpoint) {
+        auto socket = net::open_socket(ctx, net::tcp_server, std::move(endpoint));
+        return http::server{ctx, std::move(socket)};
+    }
 
-} // namespace g6
+    template<typename Context>
+    auto tag_invoke(tag_t<make_server>, Context &ctx, web::proto::https_ const &, net::ip_endpoint endpoint,
+                    const auto &cert, const auto &key) {
+        auto socket = net::open_socket(ctx, ssl::tcp_server, std::move(endpoint), cert, key);
+        return http::server{ctx, std::move(socket)};
+    }
+}// namespace g6
