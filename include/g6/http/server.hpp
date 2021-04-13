@@ -46,8 +46,8 @@ namespace g6 {
             server(server const &) = delete;
             server(server &&) noexcept = default;
             ~server() noexcept {
-              // cleanup operation is not stoppable it must be done separately
-              sync_wait(scope_.cleanup());
+                // cleanup operation is not stoppable it must be done separately
+                sync_wait(scope_.cleanup());
             }
 
             template<typename Context2>
@@ -65,35 +65,22 @@ namespace g6 {
             }
 
             template<typename Server, typename RequestHandlerBuilder>
-            friend auto tag_invoke(tag_t<async_serve>, Server &server, inplace_stop_source &stop_source,
+            friend task<void> tag_invoke(tag_t<async_serve>, Server &server, inplace_stop_source &stop_source,
                                          RequestHandlerBuilder &&request_handler_builder) {
-                auto receiver = transform(
-                    [&server = server, &scope = server.scope_, &ctx = server.context_, stop_source = &stop_source,
-                     builder = std::forward<RequestHandlerBuilder>(request_handler_builder)](auto result_tuple) {
-                        auto &[peer, peer_address] = result_tuple;
-                        spdlog::info("Client connected: {}", peer_address.to_string());
-                        scope.spawn(
-                            with_query_value(
-                                let(make_session(server, std::move(peer), std::move(peer_address)),
-                                    [stop_source, builder = std::forward<decltype(builder)>(builder)](auto &session) {
-                                        return let(just(), [&]() mutable {
-                                            auto request_handler = builder(session);
-                                            return let(//net::async_recv(*session),
-                                                net::async_recv(session), [request_handler](auto request) mutable {
-                                                    return request_handler(request.get());
-                                                });
-                                        });
-                                    }),
-                                get_stop_token, stop_source->get_token()),
-                            ctx.get_scheduler());
-                    });
-                return with_query_value(
-                    let(just(),
-                        [stop_source = &stop_source, server = &server, receiver = std::move(receiver)] {
-                            return net::async_accept(server->socket) | std::move(receiver);
-                        })
-                        | repeat_effect() | transform_done([&]() noexcept { return just(); }),
-                    get_stop_token, stop_source.get_token());
+                while (not stop_source.stop_requested()) {
+                    auto [sock, address] = co_await with_query_value(net::async_accept(server.socket), get_stop_token, stop_source.get_token());
+                    auto session = co_await make_session(server, std::move(sock), std::move(address));
+                    spdlog::info("client connected: {}", address.to_string());
+                    server.scope_.spawn(with_query_value(let(just(), // TODO why this let just ? (task does not have sends_done ?)
+                                            [session = std::move(session),
+                                             builder = std::forward<RequestHandlerBuilder>(request_handler_builder)]() mutable -> task<void> {
+                                                auto request_handler = builder(session);
+                                                auto request = co_await net::async_recv(session);
+                                                co_await request_handler(request.get());
+                                            }),
+                                            get_stop_token, stop_source.get_token()),
+                                        server.context_.get_scheduler());
+                }
             }
         };
     }// namespace http
