@@ -56,7 +56,8 @@ public:
     std::string output{};
     output.reserve(input.size());
     for (size_t ii = 0; ii < input.size(); ++ii) {
-      if (not ctre::match<R"([a-zA-Z0-9])">(std::string_view{&input[ii], 1})) {
+        static constexpr ctll::fixed_string printable_chars = R"([a-zA-Z0-9])";
+      if (not ctre::match<printable_chars>(std::string_view{&input[ii], 1})) {
         output.reserve(output.capacity() + 3);
         output.append(fmt::format(FMT_STRING("%{:02X}"), uint8_t(input[ii])));
       } else {
@@ -69,7 +70,8 @@ public:
     std::string output{};
     output.reserve(input.size());
     for (size_t ii = 0; ii < input.size(); ++ii) {
-      if (ctre::match<R"(%[a-zA-Z0-9]{2})">(std::string_view{&input[ii], 3})) {
+        static constexpr ctll::fixed_string two_printable_chars = R"(%[a-zA-Z0-9]{2})";
+      if (ctre::match<two_printable_chars>(std::string_view{&input[ii], 3})) {
         uint8_t c{};
         std::from_chars(&input[ii + 1], &input[ii + 3], c, 16);
         output.append(std::string_view{reinterpret_cast<char *>(&c), 1});

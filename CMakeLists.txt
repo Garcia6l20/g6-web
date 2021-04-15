@@ -58,6 +58,11 @@ add_library(g6::web ALIAS ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_link_libraries(${PROJECT_NAME} PUBLIC g6::net g6::router ctre::ctre http_parser::http_parser)
 
+option(G6_WEB_DEBUG "Enable debug logs in g6::web" OFF)
+if(G6_WEB_DEBUG)
+  target_compile_definitions(${PROJECT_NAME} PUBLIC -DG6_WEB_DEBUG=1)
+endif()
+
 enable_testing()
 if (BUILD_TESTING)
   add_subdirectory(tests)

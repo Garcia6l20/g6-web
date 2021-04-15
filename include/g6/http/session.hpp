@@ -15,6 +15,7 @@
 #include <g6/http/impl/static_parser_handler.hpp>
 #include <g6/net/ip_endpoint.hpp>
 #include <g6/net/net_cpo.hpp>
+#include <g6/web/web_cpo.hpp>
 
 namespace g6::http {
 
@@ -23,15 +24,15 @@ namespace g6::http {
     {
     public:
         struct request;
+        Socket socket;
 
-    private:
-        Socket socket_;
+    protected:
         net::ip_endpoint endpoint_;
         using session_buffer = std::array<char, 1024>;
         session_buffer buffer_;
         std::string header_data_;
 
-        request request_{socket_, buffer_};
+        //        request request_{socket_, buffer_};
 
         void build_header(http::status status, http::headers &&headers) noexcept {
             header_data_ = fmt::format("HTTP/1.1 {} {}\r\n"
@@ -45,14 +46,19 @@ namespace g6::http {
 
     public:
         server_session(Socket socket, net::ip_endpoint endpoint) noexcept
-            : socket_{std::move(socket)}, endpoint_{std::move(endpoint)} {}
+            : socket{std::move(socket)}, endpoint_{std::move(endpoint)} {}
+
+        friend auto& tag_invoke(unifex::tag_t<web::get_socket>, server_session &session) noexcept {
+            return session.socket;
+        }
 
         friend auto tag_invoke(unifex::tag_t<net::async_recv>, server_session &session) {
             using namespace unifex;
-            return net::async_recv(session.socket_, as_writable_bytes(span{session.buffer_}))
+            return net::async_recv(session.socket, as_writable_bytes(span{session.buffer_}))
                  | transform([&](size_t bytes) {
-                       session.request_.parse(span{session.buffer_.data(), bytes});
-                       return std::ref(session.request_);
+                       request req{session.socket, session.buffer_};
+                       req.parse(as_bytes(span{session.buffer_.data(), bytes}));
+                       return req;
                    });
         }
 
@@ -62,10 +68,10 @@ namespace g6::http {
             using namespace unifex;
             if (data.size()) { hdrs.template emplace("Content-Length", std::to_string(data.size())); }
             session.build_header(status, std::move(hdrs));
-            return let(net::async_send(session.socket_,
+            return let(net::async_send(session.socket,
                                        as_bytes(span{session.header_data_.data(), session.header_data_.size()})),
                        [data, &session](size_t) {
-                           return net::async_send(session.socket_, as_bytes(span{data.data(), data.size()}));
+                           return net::async_send(session.socket, as_bytes(span{data.data(), data.size()}));
                        });
         }
 
@@ -73,8 +79,13 @@ namespace g6::http {
         friend auto tag_invoke(unifex::tag_t<net::async_send> const &tag, server_session &session, http::status status,
                                unifex::span<T, extent> data) {
             using namespace unifex;
-            return tag_invoke(tag, session, status, http::headers{},
-                              data);
+            return tag_invoke(tag, session, status, http::headers{}, data);
+        }
+
+        friend auto tag_invoke(unifex::tag_t<net::async_send> const &tag, server_session &session,
+                               http::status status) {
+            using namespace unifex;
+            return tag_invoke(tag, session, status, http::headers{}, span{static_cast<const std::byte *>(nullptr), 0});
         }
 
         struct response_stream {
@@ -105,13 +116,12 @@ namespace g6::http {
                                http::headers &&headers) {
             using namespace unifex;
             session.build_header(status, std::forward<http::headers>(headers));
-            return net::async_send(session.socket_,
+            return net::async_send(session.socket,
                                    as_bytes(span{session.header_data_.data(), session.header_data_.size()}))
-                 | transform([&session](size_t) { return response_stream{session.socket_}; });
+                 | transform([&session](size_t) { return response_stream{session.socket}; });
         }
 
-        server_session(server_session &&other) noexcept
-            : socket_{std::move(other.socket_)}, request_{socket_, buffer_} {}
+        server_session(server_session &&other) noexcept : socket{std::move(other.socket)} {}
         server_session(server_session const &other) = delete;
 
         struct request : detail::static_parser_handler<true> {
@@ -119,7 +129,8 @@ namespace g6::http {
             session_buffer &buffer_;
             request(Socket &socket, session_buffer &buffer) noexcept : socket_{socket}, buffer_{buffer} {}
 
-            request(request &&other) noexcept : socket_{other.socket_}, buffer_{other.buffer_} {};
+            request(request &&other) noexcept
+                : detail::static_parser_handler<true>{std::forward<request>(other)}, socket_{other.socket_}, buffer_{other.buffer_} {};
 
             request(request const &other) = delete;
 
@@ -131,7 +142,7 @@ namespace g6::http {
                 } else {
                     return net::async_recv(request.socket_, as_writable_bytes(span{request.buffer_}))
                          | transform([&](size_t bytes) {
-                               request.parse(span{request.buffer_.data(), bytes});
+                               request.parse(as_bytes(span{request.buffer_.data(), bytes}));
                                return request.body();
                            });
                 }
