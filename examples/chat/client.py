@@ -20,7 +20,7 @@ async def main():
     print("Receiving...")
     result = await ws.recv()
     print(f"Received {result}")
-    assert result.decode('utf-8') == expected
+    assert result == expected
 
 
 if __name__ == '__main__':

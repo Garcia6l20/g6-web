@@ -31,9 +31,14 @@ namespace g6::web {
     namespace upgrade_connection_ {
         constexpr struct fn_ {
             // server connection upgrade
-            template<typename Server, typename Connection>
-            auto operator()(Server& server, Connection& connection) const {
-                return unifex::tag_invoke(*this, server, connection);
+            template<typename Tag, typename Session>
+            auto operator()(Tag const& tag, Session &session) const {
+                return unifex::tag_invoke(*this, tag, session);
+            }
+
+            template<typename Tag, typename Connection, typename Request>
+            auto operator()(Tag const& tag, Connection &connection, Request &request) const {
+                return unifex::tag_invoke(*this, tag, connection, request);
             }
 
             // client connection upgrade

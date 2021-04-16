@@ -41,6 +41,8 @@ namespace g6 {
             server(Context &context, Socket socket) : context_{context}, socket{std::move(socket)} {}
 
         public:
+            static constexpr auto proto = web::proto::http;
+
             Socket socket;
 
             using connection_type = server_session<Socket>;
@@ -61,52 +63,50 @@ namespace g6 {
             friend auto g6::web::tag_invoke(tag_t<g6::web::make_server>, Context2 &ctx, web::proto::https_ const &,
                                             net::ip_endpoint, const auto &, const auto &);
 
-            //            friend auto tag_invoke(tag_t<web::upgrade_connection>, http::server<Context, Socket> const &, Socket &&sock,
-            //                                   net::ip_endpoint &&endpoint) noexcept {
-            //                return just(
-            //                    server_session<Socket>{std::forward<Socket>(sock), std::forward<net::ip_endpoint>(endpoint)});
-            //            }
+            template<template<class, class> typename Server, typename Context_, typename Socket_,
+                typename RequestHandlerBuilder>
+            friend task<void> tag_invoke(tag_t<web::async_serve>, Server<Context_, Socket_> &server,
+                                  inplace_stop_source &stop_source, RequestHandlerBuilder &&request_handler_builder) {
 
-            //            template<typename UpgradedConnection>
-            //            task<UpgradedConnection> tag_invoke(unifex::tag_t<web::upgrade_connection>, Context &context,
-            //                                                http::server_session<Socket> &session,
-            //                                                std::type_identity<UpgradedConnection> conn_type) {
-            //                co_return co_await web::upgrade_connection(conn_type, context, session, session.socket);
-            //            }
+                async_scope &scope = server.scope_;
+                auto sched = server.context_.get_scheduler();
 
-            template<typename Server, typename RequestHandlerBuilder>
-            friend task<void> tag_invoke(tag_t<web::async_serve>, Server &server, inplace_stop_source &stop_source,
-                                         RequestHandlerBuilder &&request_handler_builder) {
                 while (not stop_source.stop_requested()) {
                     auto [sock, address] = co_await with_query_value(net::async_accept(server.socket), get_stop_token,
                                                                      stop_source.get_token());
-                    auto http_session = server_session<Socket>{std::move(sock), address};
+                    auto http_session = server_session<Socket_>{std::move(sock), address};
                     spdlog::info("client connected: {}", address.to_string());
-                    auto session = co_await web::upgrade_connection(server, http_session);
-                    server.scope_.spawn(
-                        with_query_value(let(just(),// TODO why this let just ? (task does not have sends_done ?)
-                                             [session = std::move(session),
-                                              builder = std::forward<RequestHandlerBuilder>(
-                                                  request_handler_builder)]() mutable -> task<void> {
-                                                 auto request_handler = builder(session);
-                                                 auto request = co_await net::async_recv(session);
-                                                 co_await request_handler(std::move(request));
-                                             }),
-                                         get_stop_token, stop_source.get_token()),
-                        server.context_.get_scheduler());
+                    auto session = co_await web::upgrade_connection(Server<Context_, Socket_>::proto, http_session);
+                    scope.spawn(
+                        with_query_value(
+                            let(just(),// TODO why this let just ? (task does not have sends_done ?)
+                                [session = std::move(session), builder = std::forward<RequestHandlerBuilder>(
+                                    request_handler_builder)]() mutable -> task<void> {
+                                  try {
+                                      auto request_handler = builder(session);
+                                      auto request = co_await net::async_recv(session);
+                                      co_await request_handler(std::move(request));
+                                  } catch (std::system_error const &error) {
+                                      if (error.code() != std::errc::connection_reset) { throw; }
+                                      spdlog::info("connection reset '{}'", session.remote_endpoint().to_string());
+                                  }
+                                }),
+                            get_stop_token, stop_source.get_token()),
+                        sched);
                 }
             }
         };
-    }// namespace http
 
-    namespace io {
-        template<typename Context_, typename Socket_>
-        task<http::server_session<Socket_>> tag_invoke(unifex::tag_t<web::upgrade_connection>,
-                                                       http::server<Context_, Socket_> &,
+        template<typename Socket_>
+        task<http::server_session<Socket_>> tag_invoke(unifex::tag_t<web::upgrade_connection>, web::proto::http_,
                                                        http::server_session<Socket_> &session) {
             co_return std::move(session);
         }
-    }
+
+    }// namespace http
+
+    namespace io {
+    }// namespace io
 
     namespace web {
 

@@ -100,7 +100,7 @@ int main(int argc, char **argv) {
         std::make_tuple(),// global context
         http::route::get<R"(/(.*))">(
             [&](std::string_view path, router::context<http::server_session<net::async_socket>> session,
-                router::context<http::server_session<net::async_socket>::request> request) -> task<void> {
+                router::context<http::server_request<net::async_socket>> request) -> task<void> {
                 spdlog::info("get: {}", path);
                 if (fs::is_directory(root_path / path)) {
                     fmt::memory_buffer body;
@@ -139,7 +139,7 @@ int main(int argc, char **argv) {
             }),
         router::on<R"(.*)">(
             [](router::context<http::server_session<net::async_socket>> session,
-               router::context<http::server_session<net::async_socket>::request> request) -> task<void> {
+               router::context<http::server_request<net::async_socket>> request) -> task<void> {
                 spdlog::info("unhandled: {} {}", request->url(), request->method());
                 std::string_view not_found = R"(<div><h6>Not found</h6><p>{}</p></div>)";
                 co_await net::async_send(*session, http::status::not_found,
