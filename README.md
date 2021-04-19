@@ -1,4 +1,5 @@
 # g6 web library
+
 > An unifex-based web framework
 
 ## Simple server example
@@ -9,15 +10,15 @@ auto server =
               web::proto::http,
               *net::ip_endpoint::from_string("127.0.0.1:4242"))
 co_await async_serve(
-  std::move(server), server_stop_source.get_token(),
+  server, server_stop_source.get_token(),
   [&]<typename Session>(Session &session) {
-    return [&session]<typename Request>(Request &request) -> task<void> {
-      do {
+    return [&session](auto request) -> task<void> {
+      while (net::has_pending_data(request)) {
         auto body = co_await net::async_recv(request);
         spdlog::info("body: {}", std::string_view{
             reinterpret_cast<char *>(body.data()), body.size()});
-      } while (!request);
-      co_await net::async_send(session, http::status::ok, "OK !");
+      }
+      co_await net::async_send(session, http::status::ok, as_bytes(span{"OK !", 4}));
     };
   );
 ```
@@ -28,17 +29,23 @@ co_await async_serve(
 auto session =
     co_await net::async_connect(ctx, web::proto::http,
                                 *net::ip_endpoint::from_string("127.0.0.1:4242"));
-auto &response = co_await net::async_send(
-    session, "/", http::method::post, "Hello !");
+auto response = co_await net::async_send(
+    session, "/", http::method::post, as_bytes(span{"Hello !", 7}));
 
 std::string body_str;
-while (!response) {
+while (net::has_pending_data(response)) {
   auto body = co_await net::async_recv(response);
   body_str += std::string_view{reinterpret_cast<char *>(body.data()),
                                body.size()};
 }
 spdlog::info("body: {}", body_str);
 ```
+
+## More complex examples:
+
+- [File server example](examples/file_server): chunked transfers example.
+- [Chat server example](examples/chat): websocket example.
+
 
 ## Build
 
@@ -54,11 +61,7 @@ cmake --build
 - [x] HTTP 1.1 server
 - [x] HTTP 1.1 client
 - [x] HTTP router
-- [x] Chunked transfers (server-side)
-- [ ] Chunked transfers (client-side)
-- [ ] Websocket server
-- [ ] Websocket client
-
-## Examples
-
-- [file server](./examples/file_server/main.cpp): an http file server.
+- [x] Chunked transfers (server download)
+- [ ] Chunked transfers (client upload)
+- [x] Websocket server
+- [x] Websocket client
