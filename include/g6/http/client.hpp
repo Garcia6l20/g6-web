@@ -42,6 +42,7 @@ namespace g6::http {
                     co_return response.body();
                 } else {
                     size_t bytes = co_await net::async_recv(response.socket_, as_writable_bytes(response.buffer_));
+                    if (bytes == 0) { throw std::system_error{std::make_error_code(std::errc::connection_reset)}; }
                     response.parse(as_bytes(span{response.buffer_.data(), bytes}));
                     co_return response.body();
                 }

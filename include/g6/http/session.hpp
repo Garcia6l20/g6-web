@@ -59,17 +59,15 @@ namespace g6::http {
 
         server_request(server_request const &other) = delete;
 
-        friend auto tag_invoke(unifex::tag_t<net::async_recv>, server_request &request)
-            -> unifex::any_sender_of<unifex::span<std::byte, unifex::dynamic_extent>> {
+        friend task<span<std::byte const>> tag_invoke(unifex::tag_t<net::async_recv>, server_request &request) {
             using namespace unifex;
             if (request.has_body()) {
-                return just(request.body());
+                co_return request.body();
             } else {
-                return net::async_recv(request.socket_, as_writable_bytes(span{request.buffer_}))
-                     | transform([&](size_t bytes) {
-                           request.parse(as_bytes(span{request.buffer_.data(), bytes}));
-                           return request.body();
-                       });
+                size_t bytes = co_await net::async_recv(request.socket_, as_writable_bytes(span{request.buffer_}));
+                if (bytes == 0) { throw std::system_error{std::make_error_code(std::errc::connection_reset)}; }
+                request.parse(as_bytes(span{request.buffer_.data(), bytes}));
+                co_return request.body();
             }
         }
     };
@@ -80,9 +78,7 @@ namespace g6::http {
     public:
         Socket socket;
 
-        auto const&remote_endpoint() const noexcept {
-            return endpoint_;
-        }
+        auto const &remote_endpoint() const noexcept { return endpoint_; }
 
     protected:
         net::ip_endpoint endpoint_;
@@ -107,14 +103,13 @@ namespace g6::http {
             return session.socket;
         }
 
-        friend auto tag_invoke(unifex::tag_t<net::async_recv>, server_session &session) {
+        friend task<server_request<Socket>> tag_invoke(unifex::tag_t<net::async_recv>, server_session &session) {
             using namespace unifex;
-            return net::async_recv(session.socket, as_writable_bytes(span{session.buffer_}))
-                 | transform([&](size_t bytes) {
-                       server_request req{session.socket, session.buffer_};
-                       req.parse(as_bytes(span{session.buffer_.data(), bytes}));
-                       return req;
-                   });
+            size_t bytes = co_await net::async_recv(session.socket, as_writable_bytes(span{session.buffer_}));
+            if (bytes == 0) { throw std::system_error{std::make_error_code(std::errc::connection_reset)}; }
+            server_request req{session.socket, session.buffer_};
+            req.parse(as_bytes(span{session.buffer_.data(), bytes}));
+            co_return req;
         }
 
         template<typename T, size_t extent = unifex::dynamic_extent>
@@ -152,7 +147,8 @@ namespace g6::http {
                  | transform([&session](size_t) { return server_response{session.socket}; });
         }
 
-        server_session(server_session &&other) noexcept : socket{std::move(other.socket)}, endpoint_{std::move(other.endpoint_)} {}
+        server_session(server_session &&other) noexcept
+            : socket{std::move(other.socket)}, endpoint_{std::move(other.endpoint_)} {}
         server_session(server_session const &other) = delete;
     };
 

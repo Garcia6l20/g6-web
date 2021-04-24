@@ -87,7 +87,10 @@ namespace g6 {
                                       auto request = co_await net::async_recv(session);
                                       co_await request_handler(std::move(request));
                                   } catch (std::system_error const &error) {
-                                      if (error.code() != std::errc::connection_reset) { throw; }
+                                      if (error.code() != std::errc::connection_reset) {
+                                          spdlog::info("connection {} error '{}'", session.remote_endpoint().to_string(), error.code().message());
+                                          throw;
+                                      }
                                       spdlog::info("connection reset '{}'", session.remote_endpoint().to_string());
                                   }
                                 }),
