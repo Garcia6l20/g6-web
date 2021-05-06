@@ -17,7 +17,7 @@
 
 using namespace g6;
 
-TEST_CASE("https simple server", "[g6::net::https]") {
+TEST_CASE("https simple server", "[g6::web::https]") {
     io::context ctx{};
     inplace_stop_source stop_source{};
     const ssl::certificate certificate{cert};

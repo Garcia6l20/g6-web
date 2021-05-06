@@ -12,7 +12,7 @@
 
 using namespace g6;
 
-TEST_CASE("ws simple server", "[g6::net::ws]") {
+TEST_CASE("ws simple server", "[g6::web::ws]") {
     spdlog::set_level(spdlog::level::debug);
 
     io::context ctx{};

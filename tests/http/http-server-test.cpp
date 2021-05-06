@@ -14,7 +14,7 @@
 
 using namespace g6;
 
-TEST_CASE("http simple server", "[g6::net::http]") {
+TEST_CASE("http simple server", "[g6::web::http]") {
     io::context ctx{};
     inplace_stop_source stop_source{};
 
