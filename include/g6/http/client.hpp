@@ -68,7 +68,7 @@ namespace g6::http {
 
         friend task<response> tag_invoke(tag<net::async_send>, client &client, std::string_view path,
                                          http::method method, std::span<std::byte const> data, http::headers hdrs) {
-            if (data.size()) { hdrs.template emplace("Content-Length", std::to_string(data.size())); }
+            if (data.size()) { hdrs.emplace("Content-Length", std::to_string(data.size())); }
             client.build_header(path, method, std::move(hdrs));
             co_await net::async_send(client.socket,
                                      as_bytes(std::span{client.header_data_.data(), client.header_data_.size()}));
@@ -108,6 +108,7 @@ namespace g6::net {
                                                               const g6::web::proto::http_ &,
                                                               const net::ip_endpoint &endpoint) {
         auto sock = net::open_socket(context, net::proto::tcp);
+        sock.bind(net::ipv4_endpoint{});// TODO handle this for windows
         co_await net::async_connect(sock, endpoint);
         co_return g6::http::client{context, std::move(sock), endpoint};
     }
@@ -117,6 +118,7 @@ namespace g6::net {
     tag_invoke(tag<net::async_connect>, Context &context, const g6::web::proto::https_ &,
                const net::ip_endpoint &endpoint, ssl::verify_flags verify_flags) {
         auto sock = net::open_socket(context, ssl::tcp_client);
+        sock.bind(net::ipv4_endpoint{});// TODO handle this for windows
         sock.host_name("localhost");
         sock.set_peer_verify_mode(ssl::peer_verify_mode::required);
         sock.set_verify_flags(verify_flags);

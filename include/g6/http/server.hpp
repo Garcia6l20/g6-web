@@ -15,6 +15,14 @@
 
 namespace g6 {
 
+    namespace web {
+        class context;
+
+        auto tag_invoke(tag<g6::web::make_server>, g6::web::context &, net::ip_endpoint);
+
+        auto tag_invoke(tag<g6::web::make_server>, g6::web::context &, net::ip_endpoint, const auto &, const auto &);
+    }// namespace web
+
     namespace http {
 
         template<typename Context, typename Socket>
@@ -37,18 +45,16 @@ namespace g6 {
             server(server &&) noexcept = default;
             ~server() = default;
 
-            template<typename Context2>
-            friend auto g6::web::tag_invoke(tag<g6::web::make_server>, Context2 &, net::ip_endpoint);
+            friend auto g6::web::tag_invoke(tag<g6::web::make_server>, g6::web::context &, net::ip_endpoint);
 
-            template<typename Context2>
-            friend auto g6::web::tag_invoke(tag<g6::web::make_server>, Context2 &ctx, net::ip_endpoint, const auto &,
-                                            const auto &);
+            friend auto g6::web::tag_invoke(tag<g6::web::make_server>, g6::web::context &, net::ip_endpoint,
+                                            const auto &, const auto &);
 
             template<template<class, class> typename Server, typename Context_, typename Socket_,
                      typename RequestHandlerBuilder>
             friend inline task<void> tag_invoke(tag<g6::web::async_serve>, Server<Context_, Socket_> &server,
                                                 std::stop_source &stop_source,
-                                                RequestHandlerBuilder &&request_handler_builder) {
+                                                RequestHandlerBuilder &&request_handler_builder) try {
 
                 auto &scope = server.scope_;
 
@@ -64,13 +70,18 @@ namespace g6 {
                             co_await request_handler(session, std::move(request));
                         } catch (std::system_error const &error) {
                             if (error.code() != std::errc::connection_reset) {
-                                spdlog::info("connection {} error '{}'", session.remote_endpoint().to_string(),
-                                             error.code().message());
+                                spdlog::error("connection {} error '{}'", session.remote_endpoint().to_string(),
+                                              error.code().message());
                                 throw;
                             }
                             spdlog::info("connection reset '{}'", session.remote_endpoint().to_string());
                         }
                     }(std::move(session), std::forward<RequestHandlerBuilder>(request_handler_builder)));
+                }
+            } catch (std::system_error const &error) {
+                if (error.code() != std::errc::operation_canceled) {
+                    spdlog::error("server error '{}'", error.code().message());
+                    throw;
                 }
             }
         };

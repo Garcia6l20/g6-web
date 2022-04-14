@@ -13,7 +13,7 @@
 using namespace g6;
 using namespace std::chrono_literals;
 
-TEST_CASE("http server stop", "[g6::web::http]") {
+TEST_CASE("http server stop", "[g6::web::http]") try {
     spdlog::set_level(spdlog::level::debug);
     web::context ctx{};
     std::stop_source stop_source{};
@@ -24,22 +24,23 @@ TEST_CASE("http server stop", "[g6::web::http]") {
 
     sync_wait(
         [&]() -> task<> {
-            REQUIRE_THROWS_WITH(co_await web::async_serve(server, stop_source,
-                                                          [&] {
-                                                              return []<typename Session, typename Request>(
-                                                                         Session &session, Request request) -> task<> {
-                                                                  FAIL("Should not be reached !");
-                                                                  co_return;
-                                                              };
-                                                          }),
-                                "Operation canceled");
+            co_await web::async_serve(server, stop_source, [&] {
+                return []<typename Session, typename Request>(Session &session, Request request) -> task<> {
+                    FAIL("Should not be reached !");
+                    co_return;
+                };
+            });
+            spdlog::info("server task terminated");
         }(),
         [&]() -> task<> {
             co_await g6::schedule_after(ctx, 50ms);
             stop_source.request_stop();
+            spdlog::info("stop requested");
         }(),
         g6::async_exec(ctx, stop_source.get_token()));
-}
+
+    spdlog::info("done");
+} catch (std::exception const &error) { FAIL(error.what()); }
 
 
 TEST_CASE("http simple server", "[g6::web::http]") {
@@ -53,22 +54,17 @@ TEST_CASE("http simple server", "[g6::web::http]") {
 
     sync_wait(
         [&]() -> task<> {
-            REQUIRE_THROWS_WITH(
-                co_await web::async_serve(
-                    server, stop_source,
-                    [&] {
-                        return []<typename Session, typename Request>(Session &session, Request request) -> task<> {
-                            while (net::has_pending_data(request)) {
-                                auto body = co_await net::async_recv(request);
-                                auto sv_body =
-                                    std::string_view{reinterpret_cast<char const *>(body.data()), body.size()};
-                                spdlog::info("body: {}", sv_body);
-                                REQUIRE(sv_body == "Hello !");
-                            }
-                            co_await net::async_send(session, http::status::ok, as_bytes(std::span{"OK !", 4}));
-                        };
-                    }),
-                "Operation canceled");
+            co_await web::async_serve(server, stop_source, [&] {
+                return []<typename Session, typename Request>(Session &session, Request request) -> task<> {
+                    while (net::has_pending_data(request)) {
+                        auto body = co_await net::async_recv(request);
+                        auto sv_body = std::string_view{reinterpret_cast<char const *>(body.data()), body.size()};
+                        spdlog::info("body: {}", sv_body);
+                        REQUIRE(sv_body == "Hello !");
+                    }
+                    co_await net::async_send(session, http::status::ok, as_bytes(std::span{"OK !", 4}));
+                };
+            });
         }(),
         [&]() -> task<> {
             scope_guard _ = [&]() noexcept { stop_source.request_stop(); };

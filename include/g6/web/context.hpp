@@ -9,12 +9,10 @@ namespace g6::web {
 
     class context : public g6::io::context
     {
-        template<typename Context>
-        friend auto tag_invoke(tag<g6::web::make_server>, Context &, net::ip_endpoint endpoint);
+        friend auto tag_invoke(tag<g6::web::make_server>, g6::web::context &, net::ip_endpoint endpoint);
 
-        template<typename Context>
-        friend auto tag_invoke(tag<g6::web::make_server>, Context &ctx, net::ip_endpoint endpoint, const auto &,
-                               const auto &);
+        friend auto tag_invoke(tag<g6::web::make_server>, g6::web::context &ctx, net::ip_endpoint endpoint,
+                               const auto &, const auto &);
     };
 
 }// namespace g6::web
