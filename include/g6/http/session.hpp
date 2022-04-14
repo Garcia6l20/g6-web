@@ -1,21 +1,11 @@
 #pragma once
 
-#include <unifex/any_sender_of.hpp>
-#include <unifex/just.hpp>
-#include <unifex/let.hpp>
-#include <unifex/repeat_effect_until.hpp>
-#include <unifex/sequence.hpp>
-#include <unifex/span.hpp>
-#include <unifex/sync_wait.hpp>
-#include <unifex/tag_invoke.hpp>
-#include <unifex/task.hpp>
-#include <unifex/transform.hpp>
-#include <unifex/transform_done.hpp>
-
+#include <algorithm>
 #include <g6/http/impl/static_parser_handler.hpp>
 #include <g6/net/ip_endpoint.hpp>
 #include <g6/net/net_cpo.hpp>
 #include <g6/web/web_cpo.hpp>
+#include <string_view>
 
 namespace g6::http {
 
@@ -25,23 +15,23 @@ namespace g6::http {
         bool closed_{false};
         std::string size_str;
 
-        template<typename T, size_t extent = unifex::dynamic_extent>
-        friend auto tag_invoke(unifex::tag_t<net::async_send>, server_response &stream, span<T, extent> data) {
+        template<typename T, size_t extent>
+        friend auto tag_invoke(tag<net::async_send>, server_response &stream, std::span<T, extent> data) {
             assert(!stream.closed_);
             constexpr auto discard = transform([](auto &&...) {});
             stream.size_str = fmt::format("{:x}\r\n", data.size());
 
-            return sequence(
-                       net::async_send(stream.socket_, as_bytes(span{stream.size_str.data(), stream.size_str.size()}))
-                           | discard,
-                       net::async_send(stream.socket_, data) | discard,
-                       net::async_send(stream.socket_, as_bytes(span{"\r\n", 2})) | discard)
-                 | transform([bytes = data.size()](auto &&...) { return bytes; });
+            return sequence(net::async_send(stream.socket_,
+                                            as_bytes(std::span{stream.size_str.data(), stream.size_str.size()}))
+                                | discard,
+                            net::async_send(stream.socket_, data) | discard,
+                            net::async_send(stream.socket_, as_bytes(std::span{"\r\n", 2})) | discard)
+                   | transform([bytes = data.size()](auto &&...) { return bytes; });
         }
 
-        friend auto tag_invoke(unifex::tag_t<net::async_send>, server_response &stream) {
+        friend auto tag_invoke(tag<net::async_send>, server_response &stream) {
             stream.closed_ = true;
-            return net::async_send(stream.socket_, as_bytes(span{"0\r\n\r\n", 5}));
+            return net::async_send(stream.socket_, as_bytes(std::span{"0\r\n\r\n", 5}));
         }
     };
 
@@ -59,14 +49,13 @@ namespace g6::http {
 
         server_request(server_request const &other) = delete;
 
-        friend task<span<std::byte const>> tag_invoke(unifex::tag_t<net::async_recv>, server_request &request) {
-            using namespace unifex;
+        friend task<std::span<std::byte const>> tag_invoke(tag<net::async_recv>, server_request &request) {
             if (request.has_body()) {
                 co_return request.body();
             } else {
-                size_t bytes = co_await net::async_recv(request.socket_, as_writable_bytes(span{request.buffer_}));
+                size_t bytes = co_await net::async_recv(request.socket_, as_writable_bytes(std::span{request.buffer_}));
                 if (bytes == 0) { throw std::system_error{std::make_error_code(std::errc::connection_reset)}; }
-                request.parse(as_bytes(span{request.buffer_.data(), bytes}));
+                request.parse(as_bytes(std::span{request.buffer_.data(), bytes}));
                 co_return request.body();
             }
         }
@@ -99,57 +88,52 @@ namespace g6::http {
         server_session(Socket socket, net::ip_endpoint endpoint) noexcept
             : socket{std::move(socket)}, endpoint_{std::move(endpoint)} {}
 
-        friend auto &tag_invoke(unifex::tag_t<web::get_socket>, server_session &session) noexcept {
-            return session.socket;
-        }
+        server_session(server_session &&other) noexcept
+            : socket{std::move(other.socket)}, endpoint_{std::move(other.endpoint_)}, buffer_{std::move(other.buffer_)},
+              header_data_{std::move(other.header_data_)} {}
 
-        friend task<server_request<Socket>> tag_invoke(unifex::tag_t<net::async_recv>, server_session &session) {
-            using namespace unifex;
-            size_t bytes = co_await net::async_recv(session.socket, as_writable_bytes(span{session.buffer_}));
+        server_session(server_session const &) = delete;
+
+        friend auto &tag_invoke(tag<web::get_socket>, server_session &session) noexcept { return session.socket; }
+
+        friend task<server_request<Socket>> tag_invoke(tag<net::async_recv>, server_session &session) {
+            size_t bytes = co_await net::async_recv(
+                session.socket, as_writable_bytes(std::span{session.buffer_.data(), session.buffer_.size()}));
             if (bytes == 0) { throw std::system_error{std::make_error_code(std::errc::connection_reset)}; }
             server_request req{session.socket, session.buffer_};
-            req.parse(as_bytes(span{session.buffer_.data(), bytes}));
+            std::span<std::byte const> data = as_bytes(std::span{session.buffer_.data(), bytes});
+            req.parse(data);
             co_return req;
         }
 
-        template<typename T, size_t extent = unifex::dynamic_extent>
-        friend auto tag_invoke(unifex::tag_t<net::async_send>, server_session &session, http::status status,
-                               http::headers &&hdrs, unifex::span<T, extent> data) {
-            using namespace unifex;
+        template<typename T, size_t extent>
+        friend task<size_t> tag_invoke(tag<net::async_send>, server_session &session, http::status status,
+                                       http::headers hdrs, std::span<T, extent> data) {
             if (data.size()) { hdrs.template emplace("Content-Length", std::to_string(data.size())); }
             session.build_header(status, std::move(hdrs));
-            return let(net::async_send(session.socket,
-                                       as_bytes(span{session.header_data_.data(), session.header_data_.size()})),
-                       [data, &session](size_t) {
-                           return net::async_send(session.socket, as_bytes(span{data.data(), data.size()}));
-                       });
+            co_await net::async_send(session.socket,
+                                     as_bytes(std::span{session.header_data_.data(), session.header_data_.size()}));
+            co_return co_await net::async_send(session.socket, as_bytes(std::span{data.data(), data.size()}));
         }
 
-        template<typename T, size_t extent = unifex::dynamic_extent>
-        friend auto tag_invoke(unifex::tag_t<net::async_send> const &tag, server_session &session, http::status status,
-                               unifex::span<T, extent> data) {
-            using namespace unifex;
-            return tag_invoke(tag, session, status, http::headers{}, data);
+        template<typename T, size_t extent>
+        friend auto tag_invoke(tag<net::async_send> const &tag, server_session &session, http::status status,
+                               std::span<T, extent> data) {
+            return net::async_send(session, status, http::headers{}, data);
         }
 
-        friend auto tag_invoke(unifex::tag_t<net::async_send> const &tag, server_session &session,
-                               http::status status) {
-            using namespace unifex;
-            return tag_invoke(tag, session, status, http::headers{}, span{static_cast<const std::byte *>(nullptr), 0});
+        friend auto tag_invoke(tag<net::async_send> const &tag, server_session &session, http::status status) {
+            return net::async_send(session, status, http::headers{},
+                                   std::span{static_cast<const std::byte *>(nullptr), 0});
         }
 
-        friend auto tag_invoke(unifex::tag_t<net::async_send>, server_session &session, http::status status,
+        friend auto tag_invoke(tag<net::async_send>, server_session &session, http::status status,
                                http::headers &&headers) {
-            using namespace unifex;
             session.build_header(status, std::forward<http::headers>(headers));
             return net::async_send(session.socket,
-                                   as_bytes(span{session.header_data_.data(), session.header_data_.size()}))
-                 | transform([&session](size_t) { return server_response{session.socket}; });
+                                   as_bytes(std::span{session.header_data_.data(), session.header_data_.size()}))
+                   | transform([&session](size_t) { return server_response{session.socket}; });
         }
-
-        server_session(server_session &&other) noexcept
-            : socket{std::move(other.socket)}, endpoint_{std::move(other.endpoint_)} {}
-        server_session(server_session const &other) = delete;
     };
 
 }// namespace g6::http

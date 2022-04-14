@@ -1,6 +1,7 @@
 find_program(XXD_EXE xxd)
 if(NOT XXD_EXE)
-  message(FATAL_ERROR "Cannot find xxd")
+  message(WARNING "Cannot find xxd, chat example disabled")
+  return()
 endif()
 
 add_custom_command(OUTPUT js_main.hpp

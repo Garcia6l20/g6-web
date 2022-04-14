@@ -5,6 +5,8 @@
 #include <g6/http/server.hpp>
 #include <g6/io/context.hpp>
 
+#include <g6/tmp.hpp>
+
 #include <unifex/scope_guard.hpp>
 #include <unifex/sync_wait.hpp>
 #include <unifex/task.hpp>
@@ -24,16 +26,28 @@ static constexpr std::string_view list_dir_template_ = R"(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/5.0.0-alpha1/css/bootstrap.min.css" integrity="sha384-r4NyP46KrjDleawBgD5tp8Y7UzmLA05oM1iAEQ17CSuDqnUK2+k9luXQOfXJCJ4I" crossorigin="anonymous">
-<title>{title}</title>
+<title>{{title}}</title>
 </head>
 <body class="bg-light">
     <div class="container">
         <div class="py-5 text-center">
             <h2>G6 File Server</h2>
-            <p class="lead">{path}</p>
+            <p class="lead">{{path}}</p>
         </div>
-        <nav aria-label="breadcrumb"><ol class="breadcrumb">{breadcrumb}</ol></nav>
-        {body}
+        <nav aria-label="breadcrumb"><ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">Home</a></li>
+        {% for part in breadcrumb %}
+        <li class="breadcrumb-item"><a href="{{part.url}}">{{part.name}}</a></li>
+        {% endfor %}
+        </ol></nav>
+        <div class="list-group">
+        {% for directory in directories %}
+        <a class="list-group-item-action" href="{{directory.url}}">{{directory.path}}</a>
+        {% endfor %}
+        {% for file in files %}
+        <a class="list-group-item-action{% if for.last %} active{% endif %}" href="{{file.url}}">{{file.path}}</a>
+        {% endfor %}
+        </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js" integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo" crossorigin="anonymous"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/5.0.0-alpha1/js/bootstrap.min.js" integrity="sha384-oesi62hOLfzrys4LxRF63OJCXdXDipiYWBnvTl9Y9/TRlw5xlKIEHpNyvvDShgf/" crossorigin="anonymous"></script>
@@ -94,7 +108,6 @@ int main(int argc, char **argv) {
     auto server = web::make_server(context, web::proto::http, *net::ip_endpoint::from_string("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
     fs::path root_path = ".";
-    spdlog::info("server listening at: http://{}", server_endpoint.to_string());
 
     auto router = router::router{
         std::make_tuple(),// global context
@@ -147,8 +160,9 @@ int main(int argc, char **argv) {
             })};
     sync_wait(when_all(
         [&]() -> task<void> {
+            co_await io::async_write(context.cout, "server listening at: http://{}\n", server_endpoint.to_string());
             co_await web::async_serve(server, g_stop_source, [&]<typename Session>(Session &session) {
-                return [root_path, &session, &router]<typename Request>(Request request) mutable -> task<void> {
+                return [root_path, &session, &router, &context]<typename Request>(Request request) mutable -> task<void> {
                     co_await router(request.url(), request.method(), std::ref(request), std::ref(session));
                     while (net::has_pending_data(request)) {
                         co_await net::async_recv(request);// flush unused body

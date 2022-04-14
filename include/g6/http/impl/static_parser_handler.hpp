@@ -1,18 +1,18 @@
 #pragma once
 
 #include <g6/http/http.hpp>
+#include <g6/net/net_cpo.hpp>
 #include <g6/utils/c_ptr.hpp>
 #include <g6/web/uri.hpp>
-
-#include <unifex/span.hpp>
-#include <unifex/task.hpp>
 
 #include <fmt/format.h>
 
 #include <charconv>
 #include <concepts>
-#include <g6/net/net_cpo.hpp>
+#include <iterator>
 #include <memory>
+#include <span>
+#include <vector>
 
 namespace g6::http::detail {
     template<detail::http_parser_type type, typename T>
@@ -66,7 +66,7 @@ namespace g6::http::detail {
         std::optional<size_t> content_length() const noexcept {
             if (headers_.contains("Content-Length")) {
                 auto it = headers_.find("Content-Length");
-                unifex::span view{it->second.data(), it->second.size()};
+                std::span view{it->second.data(), it->second.size()};
                 size_t sz = 0;
                 auto [ptr, error] = std::from_chars(view.data(), view.data() + view.size(), sz);
                 assert(error == std::errc{});
@@ -82,10 +82,11 @@ namespace g6::http::detail {
         [[nodiscard]] size_t body_size() const { return body_.size(); }
 
     public:
-        bool parse(unifex::span<std::byte const> data) {
+        bool parse(std::span<std::byte const> data) {
             body_ = {};
-            const auto count =
-                execute_parser(reinterpret_cast<const char *>(unifex::as_bytes(data).data()), data.size());
+            spdlog::debug("static_parser_handler::parse: {}",
+                          std::string_view{reinterpret_cast<const char *>(data.data()), data.size()});
+            const auto count = execute_parser(reinterpret_cast<const char *>(data.data()), data.size());
             if (count < data.size()) {
                 throw std::runtime_error{fmt::format(FMT_STRING("parse error: {}"),
                                                      http_errno_description(detail::http_errno(parser_->http_errno)))};
@@ -101,7 +102,7 @@ namespace g6::http::detail {
             }
         }
 
-        friend bool tag_invoke(unifex::tag_t<net::has_pending_data>, static_parser_handler &sph) noexcept {
+        friend bool tag_invoke(tag<net::has_pending_data>, static_parser_handler &sph) noexcept {
             return (sph.state_ != parser_status::on_message_complete) || (not sph.body_.empty());
         }
 
@@ -122,15 +123,16 @@ namespace g6::http::detail {
         auto &url() { return url_; }
 
         std::string to_string() const {
-            fmt::memory_buffer out;
+            std::vector<char> out;
             std::string_view type;
             if constexpr (is_request) {
-                fmt::format_to(out, "request {} {}", detail::http_method_str(detail::http_method(parser_->method)),
-                               url_);
+                fmt::format_to(std::back_inserter(out), "request {} {}",
+                               detail::http_method_str(detail::http_method(parser_->method)), url_);
             } else {
-                fmt::format_to(out, "response {} ", detail::http_status_str(detail::http_status(parser_->status_code)));
+                fmt::format_to(std::back_inserter(out), "response {} ",
+                               detail::http_status_str(detail::http_status(parser_->status_code)));
             }
-            fmt::format_to(out, "{}", body_);
+            fmt::format_to(std::back_inserter(out), "{}", body_);
             return out.data();
         }
 
@@ -221,7 +223,7 @@ namespace g6::http::detail {
 
         static inline int on_body(detail::http_parser *parser, const char *data, size_t len) {
             auto &this_ = instance(parser);
-            this_.body_ = unifex::as_writable_bytes(unifex::span{const_cast<char *>(data), len});
+            this_.body_ = std::as_writable_bytes(std::span{const_cast<char *>(data), len});
             this_.state_ = parser_status::on_body;
             return 0;
         }
@@ -257,7 +259,7 @@ namespace g6::http::detail {
         parser_status state_{parser_status::none};
         std::string header_field_;
         std::string url_;
-        unifex::span<std::byte> body_;
+        std::span<std::byte> body_;
         http::headers headers_;
 
         //		template<bool _is_response, is_body BodyT>
