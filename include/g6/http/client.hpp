@@ -30,7 +30,7 @@ namespace g6::http {
 
             response(response const &other) = delete;
 
-            friend inline task<std::span<std::byte>> tag_invoke(tag<g6::net::async_recv>, response &response) {
+            friend inline task<std::span<std::byte>> tag_invoke(tag_t<g6::net::async_recv>, response &response) {
                 if (response.has_body()) {
                     co_return response.body();
                 } else {
@@ -54,8 +54,8 @@ namespace g6::http {
         std::span<std::byte> buffer_{buffer_data_.data(), buffer_data_.size()};
         std::string header_data_;
 
-        friend auto &tag_invoke(tag<web::get_context>, client &client) { return client.context_; }
-        friend auto &tag_invoke(tag<web::get_socket>, client &client) { return client.socket; }
+        friend auto &tag_invoke(tag_t<web::get_context>, client &client) { return client.context_; }
+        friend auto &tag_invoke(tag_t<web::get_socket>, client &client) { return client.socket; }
 
         void build_header(std::string_view path, http::method method, http::headers &&headers) noexcept {
             header_data_ = fmt::format("{} {} HTTP/1.1\r\n"
@@ -66,7 +66,7 @@ namespace g6::http {
             header_data_ += "\r\n";
         }
 
-        friend task<response> tag_invoke(tag<net::async_send>, client &client, std::string_view path,
+        friend task<response> tag_invoke(tag_t<net::async_send>, client &client, std::string_view path,
                                          http::method method, std::span<std::byte const> data, http::headers hdrs) {
             if (data.size()) { hdrs.emplace("Content-Length", std::to_string(data.size())); }
             client.build_header(path, method, std::move(hdrs));
@@ -76,18 +76,18 @@ namespace g6::http {
             co_return response{client.socket, client.buffer_};
         }
 
-        friend auto tag_invoke(tag<net::async_send>, client &client, std::string_view path, http::method method) {
+        friend auto tag_invoke(tag_t<net::async_send>, client &client, std::string_view path, http::method method) {
             static constexpr std::span empty{static_cast<std::byte const *>(nullptr), 0};
             return net::async_send(client, path, method, empty, http::headers{});
         }
 
-        friend auto tag_invoke(tag<net::async_send>, client &client, std::string_view path, http::method method,
+        friend auto tag_invoke(tag_t<net::async_send>, client &client, std::string_view path, http::method method,
                                http::headers &&hdrs) {
             static constexpr std::span empty{static_cast<std::byte const *>(nullptr), 0};
             return net::async_send(client, path, method, empty, std::forward<http::headers>(hdrs));
         }
 
-        friend auto tag_invoke(tag<net::async_send>, client &client, std::string_view path, http::method method,
+        friend auto tag_invoke(tag_t<net::async_send>, client &client, std::string_view path, http::method method,
                                std::span<std::byte const> data) {
             return net::async_send(client, path, method, data, http::headers{});
         }
@@ -104,7 +104,7 @@ namespace g6::http {
 namespace g6::net {
 
     template<typename Context>
-    task<http::client<Context, net::async_socket>> tag_invoke(tag<net::async_connect>, Context &context,
+    task<http::client<Context, net::async_socket>> tag_invoke(tag_t<net::async_connect>, Context &context,
                                                               const g6::web::proto::http_ &,
                                                               const net::ip_endpoint &endpoint) {
         auto sock = net::open_socket(context, net::proto::tcp);
@@ -115,7 +115,7 @@ namespace g6::net {
 
     template<typename Context>
     task<http::client<Context, ssl::async_socket>>
-    tag_invoke(tag<net::async_connect>, Context &context, const g6::web::proto::https_ &,
+    tag_invoke(tag_t<net::async_connect>, Context &context, const g6::web::proto::https_ &,
                const net::ip_endpoint &endpoint, ssl::verify_flags verify_flags) {
         auto sock = net::open_socket(context, ssl::tcp_client);
         sock.bind(net::ipv4_endpoint{});// TODO handle this for windows

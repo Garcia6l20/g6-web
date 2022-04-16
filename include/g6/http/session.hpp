@@ -14,7 +14,7 @@ namespace g6::http {
     struct server_response;
 
     template<typename T, size_t extent, typename Socket_>
-    task<size_t> tag_invoke(tag<g6::net::async_send>, g6::http::server_response<Socket_> &stream,
+    task<size_t> tag_invoke(tag_t<g6::net::async_send>, g6::http::server_response<Socket_> &stream,
                             std::span<T, extent> data);
 
 
@@ -25,7 +25,7 @@ namespace g6::http {
         std::string size_str;
 
         template<typename T, size_t extent, typename Socket_>
-        friend task<size_t> tag_invoke(tag<g6::net::async_send>, g6::http::server_response<Socket_> &stream,
+        friend task<size_t> tag_invoke(tag_t<g6::net::async_send>, g6::http::server_response<Socket_> &stream,
                                        std::span<T, extent> data) {
             assert(!stream.closed_);
             constexpr auto discard = transform([](auto &&...) {});
@@ -37,7 +37,7 @@ namespace g6::http {
             co_return data.size();
         }
 
-        friend auto tag_invoke(tag<net::async_send>, server_response &stream) {
+        friend auto tag_invoke(tag_t<net::async_send>, server_response &stream) {
             stream.closed_ = true;
             return net::async_send(stream.socket_, as_bytes(std::span{"0\r\n\r\n", 5}));
         }
@@ -57,7 +57,7 @@ namespace g6::http {
 
         server_request(server_request const &other) = delete;
 
-        friend task<std::span<std::byte const>> tag_invoke(tag<net::async_recv>, server_request &request) {
+        friend task<std::span<std::byte const>> tag_invoke(tag_t<net::async_recv>, server_request &request) {
             if (request.has_body()) {
                 co_return request.body();
             } else {
@@ -102,9 +102,9 @@ namespace g6::http {
 
         server_session(server_session const &) = delete;
 
-        friend auto &tag_invoke(tag<web::get_socket>, server_session &session) noexcept { return session.socket; }
+        friend auto &tag_invoke(tag_t<web::get_socket>, server_session &session) noexcept { return session.socket; }
 
-        friend task<server_request<Socket>> tag_invoke(tag<net::async_recv>, server_session &session) {
+        friend task<server_request<Socket>> tag_invoke(tag_t<net::async_recv>, server_session &session) {
             size_t bytes = co_await net::async_recv(
                 session.socket, as_writable_bytes(std::span{session.buffer_.data(), session.buffer_.size()}));
             if (bytes == 0) { throw std::system_error{std::make_error_code(std::errc::connection_reset)}; }
@@ -115,7 +115,7 @@ namespace g6::http {
         }
 
         template<typename T, size_t extent>
-        friend task<size_t> tag_invoke(tag<net::async_send>, server_session &session, http::status status,
+        friend task<size_t> tag_invoke(tag_t<net::async_send>, server_session &session, http::status status,
                                        http::headers hdrs, std::span<T, extent> data) {
             if (data.size()) { hdrs.emplace("Content-Length", std::to_string(data.size())); }
             session.build_header(status, std::move(hdrs));
@@ -125,17 +125,17 @@ namespace g6::http {
         }
 
         template<typename T, size_t extent>
-        friend auto tag_invoke(tag<net::async_send> const &tag, server_session &session, http::status status,
+        friend auto tag_invoke(tag_t<net::async_send> const &tag_t, server_session &session, http::status status,
                                std::span<T, extent> data) {
             return net::async_send(session, status, http::headers{}, data);
         }
 
-        friend auto tag_invoke(tag<net::async_send> const &tag, server_session &session, http::status status) {
+        friend auto tag_invoke(tag_t<net::async_send> const &tag_t, server_session &session, http::status status) {
             return net::async_send(session, status, http::headers{},
                                    std::span{static_cast<const std::byte *>(nullptr), 0});
         }
 
-        friend auto tag_invoke(tag<net::async_send>, server_session &session, http::status status,
+        friend auto tag_invoke(tag_t<net::async_send>, server_session &session, http::status status,
                                http::headers &&headers) {
             session.build_header(status, std::forward<http::headers>(headers));
             return net::async_send(session.socket,

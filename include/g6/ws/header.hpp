@@ -106,11 +106,11 @@ namespace g6::ws {
             return {to_send, payload_length};
         }
 
-        void serialize(span<std::byte> buffer) {
+        void serialize(std::span<std::byte> buffer) {
             size_t mask_offset = 2;
             std::memset(&buffer[0], 0, 14);
             buffer[0] = std::byte(fin << 7u) | std::byte(rsv1 << 6u) | std::byte(rsv2 << 5u) | std::byte(rsv3 << 4u)
-                      | (std::byte(opcode) & std::byte(0b0000'1111));
+                        | (std::byte(opcode) & std::byte(0b0000'1111));
             if (payload_length < 126) {
                 buffer[1] = std::byte(mask << 7u) | (std::byte(0b0111'1111) & std::byte(payload_length));
             } else if (payload_length < std::numeric_limits<uint16_t>::max()) {

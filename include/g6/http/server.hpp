@@ -5,7 +5,6 @@
 
 #include <g6/net/async_socket.hpp>
 #include <g6/net/ip_endpoint.hpp>
-
 #include <g6/ssl/async_socket.hpp>
 
 #include <g6/web/proto.hpp>
@@ -18,9 +17,9 @@ namespace g6 {
     namespace web {
         class context;
 
-        auto tag_invoke(tag<g6::web::make_server>, g6::web::context &, net::ip_endpoint);
-
-        auto tag_invoke(tag<g6::web::make_server>, g6::web::context &, net::ip_endpoint, const auto &, const auto &);
+        auto tag_invoke(tag_t<g6::web::make_server>, g6::web::context &, web::proto::http_ const &, net::ip_endpoint);
+        auto tag_invoke(tag_t<g6::web::make_server>, g6::web::context &, web::proto::https_ const &, net::ip_endpoint,
+                        const auto &, const auto &);
     }// namespace web
 
     namespace http {
@@ -45,24 +44,24 @@ namespace g6 {
             server(server &&) noexcept = default;
             ~server() = default;
 
-            friend auto g6::web::tag_invoke(tag<g6::web::make_server>, g6::web::context &, net::ip_endpoint);
+            friend auto g6::web::tag_invoke(tag_t<g6::web::make_server>, g6::web::context &, web::proto::http_ const &,
+                                            net::ip_endpoint);
 
-            friend auto g6::web::tag_invoke(tag<g6::web::make_server>, g6::web::context &, net::ip_endpoint,
-                                            const auto &, const auto &);
+            friend auto g6::web::tag_invoke(tag_t<g6::web::make_server>, g6::web::context &, web::proto::https_ const &,
+                                            net::ip_endpoint, const auto &, const auto &);
 
-            template<template<class, class> typename Server, typename Context_, typename Socket_,
-                     typename RequestHandlerBuilder>
-            friend inline task<void> tag_invoke(tag<g6::web::async_serve>, Server<Context_, Socket_> &server,
-                                                std::stop_source &stop_source,
-                                                RequestHandlerBuilder &&request_handler_builder) try {
+            template<typename RequestHandlerBuilder>
+            friend task<void> tag_invoke(tag_t<g6::web::async_serve>, server &server, std::stop_source &stop_source,
+                                         RequestHandlerBuilder &&request_handler_builder) try {
 
                 auto &scope = server.scope_;
 
                 while (not stop_source.stop_requested()) {
                     auto [sock, address] = co_await net::async_accept(server.socket, stop_source.get_token());
-                    auto http_session = server_session<Socket_>{std::move(sock), address};
+                    static_assert(std::same_as<std::decay_t<decltype(sock)>, std::decay_t<decltype(server.socket)>>);
+                    auto http_session = server_session<Socket>{std::move(sock), address};
                     spdlog::info("client connected: {}", address.to_string());
-                    auto session = co_await web::upgrade_connection(Server<Context_, Socket_>::proto, http_session);
+                    auto session = co_await web::upgrade_connection(server::proto, http_session);
                     scope.spawn([](auto session, auto builder) mutable -> task<void> {
                         try {
                             auto request_handler = builder();
@@ -87,18 +86,11 @@ namespace g6 {
         };
 
         template<typename Socket_>
-        inline task<http::server_session<Socket_>> tag_invoke(tag<web::upgrade_connection>, web::proto::http_,
+        inline task<http::server_session<Socket_>> tag_invoke(tag_t<web::upgrade_connection>, web::proto::http_,
                                                               http::server_session<Socket_> &session) {
             co_return std::move(session);
         }
 
     }// namespace http
-
-    namespace io {
-    }// namespace io
-
-    namespace web {
-
-    }// namespace web
 
 }// namespace g6

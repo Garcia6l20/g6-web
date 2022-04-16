@@ -28,7 +28,7 @@ namespace g6::http::detail {
     class static_parser_handler;
 
     template<bool is_request_>
-    inline bool tag_invoke(tag<g6::net::has_pending_data>,
+    inline bool tag_invoke(tag_t<g6::net::has_pending_data>,
                            g6::http::detail::static_parser_handler<is_request_> &sph) noexcept;
 
     template<bool is_request>
@@ -109,7 +109,7 @@ namespace g6::http::detail {
             }
         }
 
-        friend bool tag_invoke(tag<g6::net::has_pending_data>,
+        friend bool tag_invoke(tag_t<g6::net::has_pending_data>,
                                g6::http::detail::static_parser_handler<is_request> &sph) noexcept {
             return (sph.state_ != parser_status::on_message_complete) || (not sph.body_.empty());
         }

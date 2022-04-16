@@ -18,7 +18,7 @@ TEST_CASE("http server stop", "[g6::web::http]") try {
     web::context ctx{};
     std::stop_source stop_source{};
 
-    auto server = web::make_server(ctx, *net::ip_endpoint::from_string("127.0.0.1:0"));
+    auto server = web::make_server(ctx, web::proto::http, *net::ip_endpoint::from_string("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
     spdlog::info("server listening at: {}", server_endpoint.to_string());
 
@@ -48,7 +48,7 @@ TEST_CASE("http simple server", "[g6::web::http]") {
     web::context ctx{};
     std::stop_source stop_source{};
 
-    auto server = web::make_server(ctx, *net::ip_endpoint::from_string("127.0.0.1:0"));
+    auto server = web::make_server(ctx, web::proto::http, *net::ip_endpoint::from_string("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
     spdlog::info("server listening at: {}", server_endpoint.to_string());
 

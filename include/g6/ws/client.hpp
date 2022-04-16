@@ -7,8 +7,6 @@
 #include <g6/ws/connection.hpp>
 
 #include <g6/crypto/base64.hpp>
-#include <unifex/let_with.hpp>
-#include <unifex/transform.hpp>
 
 namespace g6 {
 
@@ -18,7 +16,7 @@ namespace g6 {
         class client : public connection<false, Socket>
         {
         public:
-            client(Context &context, Socket &&socket, net::ip_endpoint const& remote_endpoint) noexcept
+            client(Context &context, Socket &&socket, net::ip_endpoint const &remote_endpoint) noexcept
                 : connection<false, Socket>{std::forward<Socket>(socket), remote_endpoint} {}
 
             static std::string random_string(size_t len) {
@@ -35,10 +33,10 @@ namespace g6 {
                 return str;
             }
 
-//            template<typename Context_, typename Socket_>
-//            friend task<ws::client<Context_, Socket_>>
-//            g6::http::tag_invoke(tag_t<web::upgrade_connection>, std::type_identity<ws::client<Context_, Socket_>>,
-//                                 http::client<Context_, Socket> &http_client, Context_ &context, Socket_ &socket);
+            //            template<typename Context_, typename Socket_>
+            //            friend task<ws::client<Context_, Socket_>>
+            //            g6::http::tag_invoke(tag_t<web::upgrade_connection>, std::type_identity<ws::client<Context_, Socket_>>,
+            //                                 http::client<Context_, Socket> &http_client, Context_ &context, Socket_ &socket);
 
             template<typename Context2>
             friend auto g6::net::tag_invoke(tag_t<net::async_connect>, Context2 &, web::proto::ws_ const &,
@@ -60,13 +58,12 @@ namespace g6 {
                 {"Sec-WebSocket-Version", std::to_string(ws::client<Context, Socket>::max_ws_version_)},
             };
             auto response = co_await net::async_send(http_client, "/", http::method::get, std::move(hdrs));
-            while (net::has_pending_data(response)) {
-                co_await net::async_recv(response);
-            }
+            while (net::has_pending_data(response)) { co_await net::async_recv(response); }
             if (response.status_code() != http::status::switching_protocols) {
                 throw std::system_error(int(response.status_code()), http::error_category, "upgrade_connection");
             }
-            co_return ws::client{web::get_context(http_client), std::move(web::get_socket(http_client)), http_client.remote_endpoint()};
+            co_return ws::client{web::get_context(http_client), std::move(web::get_socket(http_client)),
+                                 http_client.remote_endpoint()};
         }
     }// namespace http
 
