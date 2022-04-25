@@ -1,4 +1,4 @@
-/** @file cppcoro/http/url_encode.hpp
+/** @file g6/web/uri.hpp
  * @author Sylvain Garcia <garcia.6l20@gmail.com>
  */
 #pragma once
@@ -23,7 +23,8 @@ namespace g6::web {
             static constexpr ctll::fixed_string regex =
                 R"(^(([^:/?#]+):)?(//(([^/:?#]*))(:([0-9]+))?)?([^?#]*)(\?([^#]*))?(#(.*))?)";
             using builder_type = ctre::regex_builder<regex>;
-            static constexpr inline auto match = ctre::regex_match_t<typename builder_type::type>();
+            static constexpr auto match =
+                ctre::regular_expression<typename builder_type::type, ctre::match_method, ctre::singleline>();
         } uri_impl;
 
     public:

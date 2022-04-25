@@ -1,9 +1,12 @@
 #pragma once
 
 #include <g6/http/impl/static_parser_handler.hpp>
+
 #include <g6/net/ip_endpoint.hpp>
 #include <g6/net/net_cpo.hpp>
 #include <g6/web/web_cpo.hpp>
+
+#include <g6/task.hpp>
 
 #include <algorithm>
 #include <string_view>
@@ -28,7 +31,6 @@ namespace g6::http {
         friend task<size_t> tag_invoke(tag_t<g6::net::async_send>, g6::http::server_response<Socket_> &stream,
                                        std::span<T, extent> data) {
             assert(!stream.closed_);
-            constexpr auto discard = transform([](auto &&...) {});
             stream.size_str = fmt::format("{:x}\r\n", data.size());
             co_await net::async_send(stream.socket_,
                                      as_bytes(std::span{stream.size_str.data(), stream.size_str.size()}));
@@ -135,12 +137,12 @@ namespace g6::http {
                                    std::span{static_cast<const std::byte *>(nullptr), 0});
         }
 
-        friend auto tag_invoke(tag_t<net::async_send>, server_session &session, http::status status,
-                               http::headers &&headers) {
+        friend task<server_response<Socket>> tag_invoke(tag_t<net::async_send>, server_session &session,
+                                                        http::status status, http::headers &&headers) {
             session.build_header(status, std::forward<http::headers>(headers));
-            return net::async_send(session.socket,
-                                   as_bytes(std::span{session.header_data_.data(), session.header_data_.size()}))
-                   | transform([&session](size_t) { return server_response{session.socket}; });
+            size_t sz = co_await net::async_send(
+                session.socket, as_bytes(std::span{session.header_data_.data(), session.header_data_.size()}));
+            co_return server_response{session.socket};
         }
     };
 

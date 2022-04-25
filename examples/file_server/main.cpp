@@ -1,16 +1,13 @@
 #include <spdlog/spdlog.h>
 
-#include <g6/http/client.hpp>
-#include <g6/http/router.hpp>
-#include <g6/http/server.hpp>
-#include <g6/io/context.hpp>
-
 #include <g6/tmp.hpp>
 
-#include <unifex/scope_guard.hpp>
-#include <unifex/sync_wait.hpp>
-#include <unifex/task.hpp>
-#include <unifex/when_all.hpp>
+// #include <g6/http/client.hpp>
+#include <g6/http/router.hpp>
+#include <g6/http/server.hpp>
+#include <g6/web/context.hpp>
+
+#include <g6/sync_wait.hpp>
 
 #include <ranges>
 
@@ -37,15 +34,15 @@ static constexpr std::string_view list_dir_template_ = R"(
         <nav aria-label="breadcrumb"><ol class="breadcrumb">
         <li class="breadcrumb-item"><a href="/">Home</a></li>
         {% for part in breadcrumb %}
-        <li class="breadcrumb-item"><a href="{{part.url}}">{{part.name}}</a></li>
+        <li class="breadcrumb-item"><a href="/{{part.url}}">{{part.name}}</a></li>
         {% endfor %}
         </ol></nav>
         <div class="list-group">
         {% for directory in directories %}
-        <a class="list-group-item-action" href="{{directory.url}}">{{directory.path}}</a>
+        <a class="list-group-item-action" href="/{{directory.url}}">{{directory.path}}</a>
         {% endfor %}
         {% for file in files %}
-        <a class="list-group-item-action{% if for.last %} active{% endif %}" href="{{file.url}}">{{file.path}}</a>
+        <a class="list-group-item-action{% if for.last %} active{% endif %}" href="/{{file.url}}">{{file.path}}</a>
         {% endfor %}
         </div>
     </div>
@@ -55,40 +52,50 @@ static constexpr std::string_view list_dir_template_ = R"(
 </html>
 )";
 
-fmt::memory_buffer make_body(const fs::path &root, std::string_view path) {
-    auto link_path = fs::relative(path, root).string();
-    if (link_path.empty()) link_path = ".";
-    fmt::memory_buffer out;
-    fmt::format_to(out, R"(<div class="list-group">)");
-    for (auto &p : fs::directory_iterator(root / path)) {
-        fmt::format_to(out, R"(<a class="list-group-item-action" href="/{link_path}">{path}</a>)",
-                       fmt::arg("path", fs::relative(p.path(), p.path().parent_path()).c_str()),
-                       fmt::arg("link_path", fs::relative(p.path(), root).c_str()));
+auto make_body(const fs::path &root, std::string_view path) {
+    using namespace g6::poly::literals;
+
+    auto dir = root / path;
+
+    spdlog::info("iterating: {}", dir.string());
+
+    poly::vec<std::string> files;
+    poly::vec<std::string> dirs;
+    for (auto &p : fs::directory_iterator(dir)) {
+
+        spdlog::info("-- {}", p.path().string());
+        auto from_root = fs::relative(p.path(), root).string();
+        auto from_parent = fs::relative(p.path(), p.path().parent_path()).string();
+
+        spdlog::info("-- rel from root: {}", from_root);
+        spdlog::info("-- rel from parent: {}", from_parent);
+
+        if (fs::is_directory(p)) {
+            dirs.push_back(poly::var{poly::obj{"url"_kw = from_root, "path"_kw = from_parent}});
+        } else {
+            files.push_back(poly::var{poly::obj{"url"_kw = from_root, "path"_kw = from_parent}});
+        }
     }
-    fmt::format_to(out, "</div>");
-    return out;
+    return std::make_tuple(dirs, files);
 }
 
-fmt::memory_buffer make_breadcrumb(std::string_view path) {
-    fmt::memory_buffer buff;
-    constexpr std::string_view init = R"(<li class="breadcrumb-item"><a href="/">Home</a></li>)";
-    buff.append(std::begin(init), std::end(init));
-    fs::path p = path;
-    std::vector<std::string> elems = {
-        {fmt::format(R"(<li class="breadcrumb-item active" aria-current="page"><a href="/{}">{}</a></li>)", p.string(),
-                     p.filename().c_str())}};
+auto make_breadcrumb(std::string_view path) {
+    using namespace g6::poly::literals;
+
+    fs::path p{path};
+    poly::vec<std::string> items{};
+    items.push_back(poly::var{poly::obj{"url"_kw = p.string(), "name"_kw = p.filename().string()}});
     p = p.parent_path();
     while (not p.filename().empty()) {
-        elems.emplace_back(
-            fmt::format(R"(<li class="breadcrumb-item"><a href="/{}">{}</a></li>)", p.string(), p.filename().c_str()));
+        items.push_back(poly::var{poly::obj{"url"_kw = p.string(), "name"_kw = p.filename().string()}});
         p = p.parent_path();
     }
-    for (auto &elem : elems | std::views::reverse) { fmt::format_to(buff, "{}", elem); }
-    return buff;
+    std::ranges::reverse(items);
+    return items;
 }
 
 namespace {
-    inplace_stop_source g_stop_source{};
+    std::stop_source g_stop_source{};
 }
 
 #include <csignal>
@@ -99,7 +106,8 @@ void terminate_handler(int) {
 }
 
 int main(int argc, char **argv) {
-    io::context context{};
+    web::context context{};
+    tmp::engine temp{list_dir_template_};
 
     std::signal(SIGINT, terminate_handler);
     std::signal(SIGTERM, terminate_handler);
@@ -107,72 +115,72 @@ int main(int argc, char **argv) {
 
     auto server = web::make_server(context, web::proto::http, *net::ip_endpoint::from_string("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
-    fs::path root_path = ".";
+    fs::path root_path = fs::current_path();
+
+    if (argc > 1) { root_path = fs::path(argv[1]); }
 
     auto router = router::router{
         std::make_tuple(),// global context
-        http::route::get<R"(/(.*))">(
-            [&](std::string_view path, router::context<http::server_session<net::async_socket>> session,
-                router::context<http::server_request<net::async_socket>> request) -> task<void> {
-                spdlog::info("get: {}", path);
-                if (fs::is_directory(root_path / path)) {
-                    fmt::memory_buffer body;
-                    try {
-                        body = make_body(root_path, path);
-                    } catch (fs::filesystem_error &error) {
-                        auto err_page = fmt::format(R"(<div><h6>Not found</h6><p>{}</p></div>)", error.what());
-                        co_await net::async_send(*session, http::status::not_found,
-                                                 as_bytes(span{err_page.data(), err_page.size()}));
-                    }
-                    auto breadcrumb = make_breadcrumb(path);
-                    auto page = fmt::format(
-                        list_dir_template_, fmt::arg("title", path),
-                        fmt::arg("body", std::string_view{body.data(), body.size()}), fmt::arg("path", path),
-                        fmt::arg("breadcrumb", std::string_view{breadcrumb.data(), breadcrumb.size()}));
-                    co_await net::async_send(*session, http::status::ok, as_bytes(span{page.data(), page.size()}));
-                } else {
-                    try {
-                        auto file = open_file_read_only(context.get_scheduler(), root_path / path);
-                        http::headers headers{{"Transfer-Encoding", "chunked"}};
-                        auto stream = co_await net::async_send(*session, http::status::ok, std::move(headers));
-                        std::array<char, 1024> data{};
-                        size_t offset = 0;
-                        while (size_t bytes =
-                                   co_await async_read_some_at(file, offset, as_writable_bytes(span{data}))) {
-                            offset += bytes;
-                            co_await net::async_send(stream, as_bytes(span{data.data(), bytes}));
-                        }
-                        co_await net::async_send(stream);// close stream
-                    } catch (std::system_error &error) {
-                        auto err_page = fmt::format(R"(<div><h6>Not found</h6><p>{}</p></div>)", error.what());
-                        co_await net::async_send(*session, http::status::not_found,
-                                                 as_bytes(span{err_page.data(), err_page.size()}));
-                    }
+        http::route::get<R"(/(.*))">([&](std::string_view path,
+                                         router::context<http::server_session<net::async_socket>> session,
+                                         router::context<http::server_request<net::async_socket>> request)
+                                         -> task<void> {
+            spdlog::info("get: {}", (root_path / path).string());
+            if (fs::is_directory(root_path / path)) {
+                using namespace g6::poly::literals;
+                auto [dirs, files] = make_body(root_path, path);
+                try {
+                    auto page = temp("title"_kw = "Title", "path"_kw = "Path", "breadcrumb"_kw = make_breadcrumb(path),
+                                     "directories"_kw = dirs, "files"_kw = files);
+                    co_await net::async_send(*session, http::status::ok, as_bytes(std::span{page.data(), page.size()}));
+                } catch (std::exception const &error) {
+                    std::string_view err = error.what();
+                    co_await net::async_send(*session, http::status::internal_server_error,
+                                             std::as_bytes(std::span{err.data(), err.size()}));
                 }
-            }),
-        router::on<R"(.*)">(
-            [](router::context<http::server_session<net::async_socket>> session,
-               router::context<http::server_request<net::async_socket>> request) -> task<void> {
-                spdlog::info("unhandled: {} {}", request->url(), request->method());
-                std::string_view not_found = R"(<div><h6>Not found</h6><p>{}</p></div>)";
+            } else if (fs::exists(root_path / path)) {
+                spdlog::info("opening: {}", (root_path / path).string());
+                auto file =
+                    open_file(context, root_path / path, g6::open_file_mode::existing | g6::open_file_mode::read);
+                http::headers headers{{"Transfer-Encoding", "chunked"}};
+                auto stream = co_await net::async_send(*session, http::status::ok, std::move(headers));
+                std::array<char, 1024> data{};
+                size_t offset = 0;
+                while (size_t bytes = co_await async_read_some(file, as_writable_bytes(std::span{data}))) {
+                    offset += bytes;
+                    co_await net::async_send(stream, as_bytes(std::span{data.data(), bytes}));
+                }
+                co_await net::async_send(stream);// close stream
+            } else {
+                auto err_page =
+                    fmt::format(R"(<div><h6>Not found</h6><p>No such file or directory: {}</p></div>)", path);
                 co_await net::async_send(*session, http::status::not_found,
-                                         as_bytes(span{not_found.data(), not_found.size()}));
-            })};
-    sync_wait(when_all(
+                                         std::as_bytes(std::span{err_page.data(), err_page.size()}));
+            }
+        }),
+        router::on<R"(.*)">([](router::context<http::server_session<net::async_socket>> session,
+                               router::context<http::server_request<net::async_socket>> request) -> task<void> {
+            // spdlog::info("unhandled: {} {}", request->url(), request->method());
+            constexpr std::string_view not_found = R"(<div><h6>Not found</h6></div>)";
+            co_await net::async_send(*session, http::status::not_found,
+                                     as_bytes(std::span{not_found.data(), not_found.size()}));
+        })};
+    sync_wait(
         [&]() -> task<void> {
-            co_await io::async_write(context.cout, "server listening at: http://{}\n", server_endpoint.to_string());
-            co_await web::async_serve(server, g_stop_source, [&]<typename Session>(Session &session) {
-                return [root_path, &session, &router, &context]<typename Request>(Request request) mutable -> task<void> {
+            co_await async_write_some(context.cout, "server listening at: http://{}\n", server_endpoint.to_string());
+            co_await web::async_serve(server, g_stop_source, [&] {
+                return [root_path, &router, &context]<typename Session, typename Request>(
+                           Session &session, Request request) mutable -> task<void> {
+                    spdlog::info("{}", request.url());
                     co_await router(request.url(), request.method(), std::ref(request), std::ref(session));
                     while (net::has_pending_data(request)) {
                         co_await net::async_recv(request);// flush unused body
                     }
+                    spdlog::info("done");
                 };
             });
             spdlog::info("terminated !");
-        }(),
-        [&]() -> task<void> {
-            context.run(g_stop_source.get_token());
             co_return;
-        }()));
+        }(),
+        async_exec(context, g_stop_source.get_token()));
 }
