@@ -62,20 +62,23 @@ namespace g6 {
                     auto http_session = server_session<Socket>{std::move(sock), address};
                     spdlog::info("client connected: {}", address.to_string());
                     auto session = co_await web::upgrade_connection(server::proto, http_session);
-                    scope.spawn([](auto session, auto builder) mutable -> task<void> {
-                        try {
-                            auto request_handler = builder();
-                            auto request = co_await net::async_recv(session);
-                            co_await request_handler(session, std::move(request));
-                        } catch (std::system_error const &error) {
-                            if (error.code() != std::errc::connection_reset) {
-                                spdlog::error("connection {} error '{}'", session.remote_endpoint().to_string(),
-                                              error.code().message());
-                                throw;
+                    scope.spawn(
+                        [](auto session, auto request_handler, std::stop_token stop) mutable -> task<void> {
+                            try {
+                                while (not stop.stop_requested()) {
+                                    auto request = co_await net::async_recv(session, stop);
+                                    co_await request_handler(session, std::move(request));
+                                }
+                            } catch (std::system_error const &error) {
+                                if (error.code() != std::errc::connection_reset) {
+                                    spdlog::error("connection {} error '{}'", session.remote_endpoint().to_string(),
+                                                  error.code().message());
+                                    throw;
+                                }
+                                spdlog::info("connection reset '{}'", session.remote_endpoint().to_string());
                             }
-                            spdlog::info("connection reset '{}'", session.remote_endpoint().to_string());
-                        }
-                    }(std::move(session), std::forward<RequestHandlerBuilder>(request_handler_builder)));
+                        }(std::move(session), std::forward<RequestHandlerBuilder>(request_handler_builder)(),
+                                                                                             stop_source.get_token()));
                 }
             } catch (std::system_error const &error) {
                 if (error.code() != std::errc::operation_canceled) {
