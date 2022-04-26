@@ -100,7 +100,7 @@ namespace {
 
 #include <csignal>
 
-void terminate_handler(int) {
+void term_handler(int) {
     g_stop_source.request_stop();
     spdlog::info("stop requested !");
 }
@@ -109,9 +109,11 @@ int main(int argc, char **argv) {
     web::context context{};
     tmp::engine temp{list_dir_template_};
 
-    std::signal(SIGINT, terminate_handler);
-    std::signal(SIGTERM, terminate_handler);
-    std::signal(SIGUSR1, terminate_handler);
+    std::signal(SIGINT, term_handler);
+    std::signal(SIGTERM, term_handler);
+#if G6_OS_LINUX
+    std::signal(SIGUSR1, term_handler);
+#endif
 
     auto server = web::make_server(context, web::proto::http, *net::ip_endpoint::from_string("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
@@ -129,14 +131,15 @@ int main(int argc, char **argv) {
             if (fs::is_directory(root_path / path)) {
                 using namespace g6::poly::literals;
                 auto [dirs, files] = make_body(root_path, path);
+                std::optional<std::string> opt_error = std::nullopt;
                 try {
                     auto page = temp("title"_kw = "Title", "path"_kw = "Path", "breadcrumb"_kw = make_breadcrumb(path),
                                      "directories"_kw = dirs, "files"_kw = files);
                     co_await net::async_send(*session, http::status::ok, as_bytes(std::span{page.data(), page.size()}));
-                } catch (std::exception const &error) {
-                    std::string_view err = error.what();
+                } catch (std::exception const &error) { opt_error = error.what(); }
+                if (opt_error) {
                     co_await net::async_send(*session, http::status::internal_server_error,
-                                             std::as_bytes(std::span{err.data(), err.size()}));
+                                             std::as_bytes(std::span{opt_error->data(), opt_error->size()}));
                 }
             } else if (fs::exists(root_path / path)) {
                 spdlog::info("opening: {}", (root_path / path).string());
@@ -167,7 +170,7 @@ int main(int argc, char **argv) {
         })};
     sync_wait(
         [&]() -> task<void> {
-            co_await async_write_some(context.cout, "server listening at: http://{}\n", server_endpoint.to_string());
+            spdlog::info("server listening at: http://{}\n", server_endpoint.to_string());
             co_await web::async_serve(server, g_stop_source, [&] {
                 return [root_path, &router, &context]<typename Session, typename Request>(
                            Session &session, Request request) mutable -> task<void> {
