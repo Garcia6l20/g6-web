@@ -24,13 +24,13 @@ namespace g6 {
 
     namespace http {
 
-        template<typename Context, typename Socket>
+        template<typename Socket>
         class server
         {
         protected:
-            Context &context_;
+            g6::web::context &context_;
             ff_spawner scope_{};
-            server(Context &context, Socket socket) : context_{context}, socket{std::move(socket)} {}
+            server(g6::web::context &context, Socket socket) : context_{context}, socket{std::move(socket)} {}
 
         public:
             static constexpr auto proto = web::proto::http;
@@ -50,8 +50,9 @@ namespace g6 {
             friend auto g6::web::tag_invoke(tag_t<g6::web::make_server>, g6::web::context &, web::proto::https_ const &,
                                             net::ip_endpoint, const auto &, const auto &);
 
-            template<typename RequestHandlerBuilder>
-            friend task<void> tag_invoke(tag_t<g6::web::async_serve>, server &server, std::stop_source &stop_source,
+            template<template<typename> typename Server, typename SocketT, typename RequestHandlerBuilder>
+            friend task<void> tag_invoke(tag_t<g6::web::async_serve>, Server<SocketT> &server,
+                                         std::stop_source &stop_source,
                                          RequestHandlerBuilder &&request_handler_builder) try {
 
                 auto &scope = server.scope_;
@@ -59,9 +60,9 @@ namespace g6 {
                 while (not stop_source.stop_requested()) {
                     auto [sock, address] = co_await net::async_accept(server.socket, stop_source.get_token());
                     static_assert(std::same_as<std::decay_t<decltype(sock)>, std::decay_t<decltype(server.socket)>>);
-                    auto http_session = server_session<Socket>{std::move(sock), address};
+                    auto http_session = server_session<SocketT>{std::move(sock), address};
                     spdlog::info("client connected: {}", address.to_string());
-                    auto session = co_await web::upgrade_connection(server::proto, http_session);
+                    auto session = co_await web::upgrade_connection(server.proto, http_session);
                     scope.spawn(
                         [](auto session, auto request_handler, std::stop_token stop) mutable -> task<void> {
                             try {

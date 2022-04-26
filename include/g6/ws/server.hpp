@@ -5,6 +5,7 @@
 #include <g6/http/server.hpp>
 
 #include <g6/ws/connection.hpp>
+#include <stop_token>
 
 namespace g6 {
 
@@ -22,15 +23,15 @@ namespace g6 {
                 : connection<true, Socket>{std::forward<Socket>(socket), endpoint, version} {}
         };
 
-        template<typename Context, typename Socket>
-        class server : public g6::http::server<Context, Socket>
+        template<typename Socket>
+        class server : public g6::http::server<Socket>
         {
         public:
             static constexpr auto proto = web::proto::ws;
 
         private:
-            server(Context &context, Socket socket) noexcept
-                : g6::http::server<Context, Socket>{context, std::move(socket)} {}
+            server(g6::web::context &context, Socket socket) noexcept
+                : g6::http::server<Socket>{context, std::move(socket)} {}
 
             friend auto web::tag_invoke(tag_t<web::make_server>, g6::web::context &ctx, web::proto::ws_ const &,
                                         net::ip_endpoint endpoint);

@@ -108,7 +108,7 @@ namespace g6::http {
         friend auto &tag_invoke(tag_t<web::get_socket>, server_session &session) noexcept { return session.socket; }
 
         friend task<server_request<Socket>> tag_invoke(tag_t<net::async_recv>, server_session &session,
-                                                       std::stop_token const &stop = {}) {
+                                                       std::stop_token stop = {}) {
             size_t bytes = co_await net::async_recv(
                 session.socket, as_writable_bytes(std::span{session.buffer_.data(), session.buffer_.size()}), stop);
             if (bytes == 0) { throw std::system_error{std::make_error_code(std::errc::connection_reset)}; }
