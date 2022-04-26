@@ -6,23 +6,17 @@
 
 #include <span>
 #include <stop_token>
-
 namespace g6::ws {
 
     template<bool is_server, typename Socket>
     class connection;
-}
-
-namespace g6::net {
-    template<bool is_server, typename Socket>
-    task<typename ws::connection<is_server, Socket>::request>
-    tag_invoke(tag_t<net::async_recv>, ws::connection<is_server, Socket> &conn, std::stop_token stop = {});
-}
-
-namespace g6::ws {
 
     template<bool is_server, typename Socket>
-    class connection;
+    class connection_request;
+
+    template<bool is_server, typename Socket>
+    inline task<connection_request<is_server, Socket>>
+    tag_invoke(tag_t<net::async_recv>, connection<is_server, Socket> &conn, std::stop_token stop = {});
 
     template<bool is_server, typename Socket>
     task<size_t> tag_invoke(tag_t<net::async_send>, connection<is_server, Socket> &, std::span<std::byte const>);
@@ -63,12 +57,12 @@ namespace g6::ws {
             }
         }
 
-        friend task<connection_request> net::tag_invoke<is_server, Socket>(tag_t<net::async_recv>,
-                                                                           connection<is_server, Socket> &conn,
-                                                                           std::stop_token);
+        template<bool is_server_, typename Socket_>
+        friend task<connection_request<is_server_, Socket_>>
+        tag_invoke(tag_t<net::async_recv>, connection<is_server_, Socket_> &conn, std::stop_token);
 
         friend task<std::span<const std::byte>> tag_invoke(tag_t<net::async_recv>, connection_request &req) {
-            uint32_t payload_offset = std::exchange(req.current_payload_offset_, 0);
+            size_t payload_offset = std::exchange(req.current_payload_offset_, 0);
             co_return as_bytes(std::span{req.buffer_.data(), payload_offset});
             //                    auto &socket = request.session_.socket();
             //                    std::array<std::byte, 1024> buffer{};
@@ -88,6 +82,8 @@ namespace g6::ws {
 
     template<bool is_server, typename Socket>
     class connection {
+        friend class connection_request<is_server, Socket>;
+
     public:
         static constexpr uint32_t max_ws_version_ = 13;
         const uint32_t ws_version;
@@ -106,8 +102,9 @@ namespace g6::ws {
         std::array<std::byte, 1024> data_{};
         net::ip_endpoint remote_endpoint_;
 
-        friend task<connection_request<is_server, Socket>>
-        net::tag_invoke<is_server, Socket>(tag_t<net::async_recv>, connection &conn, std::stop_token);
+        template<bool is_server_, typename Socket_>
+        friend task<connection_request<is_server_, Socket_>>
+        tag_invoke(tag_t<net::async_recv>, connection<is_server_, Socket_> &conn, std::stop_token);
 
         friend task<size_t> tag_invoke(tag_t<net::async_send>, connection &conn, std::span<std::byte const> data) {
             size_t data_offset = 0;
@@ -142,18 +139,15 @@ namespace g6::ws {
             : socket_{std::forward<Socket>(socket)}, remote_endpoint_{remote_endpoint}, ws_version{version} {}
     };
 
-}// namespace g6::ws
-
-namespace g6::net {
     template<bool is_server, typename Socket>
-    task<typename ws::connection<is_server, Socket>::request>
-    tag_invoke(tag_t<net::async_recv>, ws::connection<is_server, Socket> &conn, std::stop_token stop) {
+    task<connection_request<is_server, Socket>> tag_invoke(tag_t<net::async_recv>, connection<is_server, Socket> &conn,
+                                                           std::stop_token stop) {
         auto &socket = conn.socket_;
 #ifdef G6_WEB_DEBUG
         spdlog::debug("ws::connection<{}>: buffer=0x{}", is_server ? "server" : "client", (void *) conn.data_.data());
 #endif
         auto bytes_received = co_await net::async_recv(socket, std::span{conn.data_}, stop);
         if (bytes_received == 0) { throw std::system_error(std::make_error_code(std::errc::connection_reset)); }
-        co_return typename ws::connection<is_server, Socket>::request{conn, bytes_received};
+        co_return connection_request<is_server, Socket>{conn, bytes_received};
     }
-}// namespace g6::net
+}// namespace g6::ws

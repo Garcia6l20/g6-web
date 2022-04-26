@@ -13,8 +13,7 @@ namespace g6 {
     namespace ws {
 
         template<typename Context, typename Socket>
-        class client : public connection<false, Socket>
-        {
+        class client : public connection<false, Socket> {
         public:
             client(Context &context, Socket &&socket, net::ip_endpoint const &remote_endpoint) noexcept
                 : connection<false, Socket>{std::forward<Socket>(socket), remote_endpoint} {}
@@ -29,7 +28,7 @@ namespace g6 {
 
                 std::string str{};
                 str.resize(len);
-                std::generate_n(str.begin(), len, [] { return dist(rg); });
+                std::generate_n(str.begin(), len, [] { return char(dist(rg)); });
                 return str;
             }
 
@@ -39,8 +38,8 @@ namespace g6 {
             //                                 http::client<Context_, Socket> &http_client, Context_ &context, Socket_ &socket);
 
             template<typename Context2>
-            friend auto g6::net::tag_invoke(tag_t<net::async_connect>, Context2 &, web::proto::ws_ const &,
-                                            const net::ip_endpoint &);
+            friend auto tag_invoke(tag_t<net::async_connect>, Context2 &, web::proto::ws_ const &,
+                                   const net::ip_endpoint &);
         };
     }// namespace ws
 
