@@ -8,6 +8,8 @@
 
 #include <g6/crypto/base64.hpp>
 
+#include <random>
+
 namespace g6 {
 
     namespace ws {
@@ -46,9 +48,9 @@ namespace g6 {
     namespace http {
 
         template<typename Context, typename Socket>
-        task<ws::client<Context, Socket>> tag_invoke(tag_t<web::upgrade_connection>,
-                                                     http::client<Context, Socket> &http_client,
-                                                     std::type_identity<ws::client<Context, Socket>>) {
+        task<ws::client<Context, Socket>>
+        tag_invoke(tag_t<web::upgrade_connection>, http::client<Context, Socket> &http_client,
+                   std::type_identity<ws::client<Context, Socket>>, std::string_view path = "/") {
             std::string hash = crypto::base64::encode(ws::client<Context, Socket>::random_string(20));
             http::headers hdrs{
                 {"Connection", "Upgrade"},
@@ -56,7 +58,7 @@ namespace g6 {
                 {"Sec-WebSocket-Key", hash},
                 {"Sec-WebSocket-Version", std::to_string(ws::client<Context, Socket>::max_ws_version_)},
             };
-            auto response = co_await net::async_send(http_client, "/", http::method::get, std::move(hdrs));
+            auto response = co_await net::async_send(http_client, path, http::method::get, std::move(hdrs));
             while (net::has_pending_data(response)) { co_await net::async_recv(response); }
             if (response.status_code() != http::status::switching_protocols) {
                 throw std::system_error(int(response.status_code()), http::error_category, "upgrade_connection");
@@ -68,12 +70,12 @@ namespace g6 {
 
     namespace net {
         template<typename Context>
-        task<ws::client<Context, net::async_socket>> tag_invoke(tag_t<net::async_connect>, Context &context,
-                                                                g6::web::proto::ws_ const &,
-                                                                const net::ip_endpoint &endpoint) {
+        task<ws::client<Context, net::async_socket>>
+        tag_invoke(tag_t<net::async_connect>, Context &context, g6::web::proto::ws_ const &,
+                   const net::ip_endpoint &endpoint, std::string_view path = "/") {
             auto http_client = co_await net::async_connect(context, web::proto::http, endpoint);
             co_return co_await web::upgrade_connection(
-                http_client, std::type_identity<g6::ws::client<Context, net::async_socket>>{});
+                http_client, std::type_identity<g6::ws::client<Context, net::async_socket>>{}, path);
         }
     }// namespace net
 }// namespace g6

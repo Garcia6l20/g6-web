@@ -15,8 +15,7 @@
 #include <vector>
 
 namespace g6::web {
-    class uri
-    {
+    class uri {
         std::string uri_;
 
         struct impl_t {
@@ -39,8 +38,8 @@ namespace g6::web {
                 scheme = m.get<2>();
                 host = m.get<5>();
                 port = m.get<7>();
-                path = m.get<8>();
-                parameters = m.get<12>();
+                if (auto p = m.get<8>(); p.size()) { path = p; }
+                if (auto p = m.get<12>(); p.size()) { parameters = p; }
             }
         }
 

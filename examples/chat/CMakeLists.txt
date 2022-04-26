@@ -25,3 +25,7 @@ add_executable(g6-chat
   js_main.hpp
   html_index.hpp)
 target_link_libraries(g6-chat PRIVATE spdlog::spdlog g6::web g6::router)
+
+add_executable(g6-chat-bot
+  bot.cpp)
+target_link_libraries(g6-chat-bot PRIVATE spdlog::spdlog g6::web)

@@ -56,7 +56,7 @@ int main(int argc, char **argv) {
     std::signal(SIGINT, term_handler);
     std::signal(SIGTERM, term_handler);
 
-    auto server = web::make_server(context, web::proto::http, *net::ip_endpoint::from_string("127.0.0.1:0"));
+    auto server = web::make_server(context, web::proto::http, *net::ip_endpoint::from_string("127.0.0.1:8080"));
     auto server_endpoint = *server.socket.local_endpoint();
     fs::path root_path = ".";
     spdlog::info("server listening at: http://{}", server_endpoint.to_string());
