@@ -18,8 +18,10 @@ add_custom_command(OUTPUT html_index.hpp
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
+find_package(spdlog REQUIRED)
+
 add_executable(g6-chat
   main.cpp
   js_main.hpp
   html_index.hpp)
-target_link_libraries(g6-chat PRIVATE g6::web g6::router)
+target_link_libraries(g6-chat PRIVATE spdlog::spdlog g6::web g6::router)
