@@ -1,6 +1,5 @@
 #include <spdlog/spdlog.h>
 
-#include <g6/http/client.hpp>
 #include <g6/http/router.hpp>
 #include <g6/http/server.hpp>
 #include <g6/web/context.hpp>
@@ -38,7 +37,7 @@ namespace {
 #include <csignal>
 #include <list>
 
-void terminate_handler(int) {
+void term_handler(int) {
     g_stop_source.request_stop();
     spdlog::info("stop requested !");
 }
@@ -54,8 +53,8 @@ int main(int argc, char **argv) {
 
     web::context context{};
 
-    std::signal(SIGINT, terminate_handler);
-    std::signal(SIGTERM, terminate_handler);
+    std::signal(SIGINT, term_handler);
+    std::signal(SIGTERM, term_handler);
 
     auto server = web::make_server(context, web::proto::http, *net::ip_endpoint::from_string("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
