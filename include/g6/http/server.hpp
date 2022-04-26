@@ -24,9 +24,12 @@ namespace g6 {
 
     namespace http {
 
+        template<template<typename> typename Server, typename SocketT, typename RequestHandlerBuilder>
+        task<void> tag_invoke(tag_t<g6::web::async_serve>, Server<SocketT> &, std::stop_source &,
+                              RequestHandlerBuilder &&);
+
         template<typename Socket>
-        class server
-        {
+        class server {
         protected:
             g6::web::context &context_;
             ff_spawner scope_{};
@@ -51,43 +54,49 @@ namespace g6 {
                                             net::ip_endpoint, const auto &, const auto &);
 
             template<template<typename> typename Server, typename SocketT, typename RequestHandlerBuilder>
-            friend task<void> tag_invoke(tag_t<g6::web::async_serve>, Server<SocketT> &server,
-                                         std::stop_source &stop_source,
-                                         RequestHandlerBuilder &&request_handler_builder) try {
-
-                auto &scope = server.scope_;
-
-                while (not stop_source.stop_requested()) {
-                    auto [sock, address] = co_await net::async_accept(server.socket, stop_source.get_token());
-                    static_assert(std::same_as<std::decay_t<decltype(sock)>, std::decay_t<decltype(server.socket)>>);
-                    auto http_session = server_session<SocketT>{std::move(sock), address};
-                    spdlog::info("client connected: {}", address.to_string());
-                    auto session = co_await web::upgrade_connection(server.proto, http_session);
-                    scope.spawn(
-                        [](auto session, auto request_handler, std::stop_token stop) mutable -> task<void> {
-                            try {
-                                while (not stop.stop_requested()) {
-                                    auto request = co_await net::async_recv(session, stop);
-                                    co_await request_handler(session, std::move(request));
-                                }
-                            } catch (std::system_error const &error) {
-                                if (error.code() != std::errc::connection_reset) {
-                                    spdlog::error("connection {} error '{}'", session.remote_endpoint().to_string(),
-                                                  error.code().message());
-                                    throw;
-                                }
-                                spdlog::info("connection reset '{}'", session.remote_endpoint().to_string());
-                            }
-                        }(std::move(session), std::forward<RequestHandlerBuilder>(request_handler_builder)(),
-                                                                                             stop_source.get_token()));
-                }
-            } catch (std::system_error const &error) {
-                if (error.code() != std::errc::operation_canceled) {
-                    spdlog::error("server error '{}'", error.code().message());
-                    throw;
-                }
-            }
+            friend task<void> tag_invoke(tag_t<g6::web::async_serve>, Server<SocketT> &, std::stop_source &,
+                                         RequestHandlerBuilder &&);
         };
+
+        template<template<typename> typename Server, typename SocketT, typename RequestHandlerBuilder>
+        task<void> tag_invoke(tag_t<g6::web::async_serve>, Server<SocketT> &server, std::stop_source &stop_source,
+                              RequestHandlerBuilder &&request_handler_builder) try {
+
+            auto &scope = server.scope_;
+
+            while (not stop_source.stop_requested()) {
+                auto [sock, address] = co_await net::async_accept(server.socket, stop_source.get_token());
+                static_assert(std::same_as<std::decay_t<decltype(sock)>, std::decay_t<decltype(server.socket)>>);
+                auto http_session = server_session<SocketT>{std::move(sock), address};
+                spdlog::info("client connected: {}", address.to_string());
+                auto session = co_await web::upgrade_connection(server.proto, http_session);
+                scope.spawn([](auto session, auto request_handler,
+                               std::stop_token stop) mutable -> task<void> {
+                    try {
+                        while (not stop.stop_requested()) {
+                            auto request = co_await net::async_recv(session, stop);
+                            co_await request_handler(session, std::move(request));
+                        }
+                    } catch (std::system_error const &error) {
+                        if (error.code() != std::errc::connection_reset) {
+                            spdlog::error("connection {} error '{}'", session.remote_endpoint().to_string(),
+                                          error.code().message());
+                            throw;
+                        }
+                        spdlog::info("connection reset '{}'", session.remote_endpoint().to_string());
+                    } catch (std::exception const &error) {
+                        spdlog::error("connection {} error '{}'", session.remote_endpoint().to_string(), error.what());
+                        throw;
+                    }
+                }(std::move(session), std::forward<RequestHandlerBuilder>(request_handler_builder)(),
+                                                             stop_source.get_token()));
+            }
+        } catch (std::system_error const &error) {
+            if (error.code() != std::errc::operation_canceled) {
+                spdlog::error("server error '{}'", error.code().message());
+                throw;
+            }
+        }
 
         template<typename Socket_>
         inline task<http::server_session<Socket_>> tag_invoke(tag_t<web::upgrade_connection>, web::proto::http_,

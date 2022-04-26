@@ -17,6 +17,9 @@
 using namespace g6;
 
 TEST_CASE("https simple server", "[g6::web::https]") {
+
+    spdlog::set_level(spdlog::level::debug);
+
     web::context ctx{};
     std::stop_source stop_source{};
     const ssl::certificate certificate{cert};

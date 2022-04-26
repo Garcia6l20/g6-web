@@ -21,19 +21,80 @@ namespace g6::net {
 
 namespace g6::ws {
 
+    template<bool is_server, typename Socket>
+    class connection;
 
     template<bool is_server, typename Socket>
-    class connection
-    {
+    task<size_t> tag_invoke(tag_t<net::async_send>, connection<is_server, Socket> &, std::span<std::byte const>);
+
+    template<bool is_server, typename Socket>
+    class connection_request {
+        connection<is_server, Socket> &connection_;
+        std::span<std::byte> buffer_;
+        header header_;
+        size_t current_payload_offset_ = 0;
+
+        explicit connection_request(connection<is_server, Socket> &conn, size_t received_size) noexcept
+            : connection_{conn}, buffer_{connection_.data_}, header_{header::parse(
+                                                                 std::span{buffer_.data(), received_size})} {
+#ifdef G6_WEB_DEBUG
+            spdlog::debug("ws::request<{}>:\n"
+                          " - received {} bytes\n"
+                          " - payload_length={} bytes\n"
+                          " - payload_offset={} bytes",
+                          is_server ? "server" : "client", received_size, header_.payload_length,
+                          header_.payload_offset);
+            spdlog::debug("ws::request<{}>: first byte={}, buffer=0x{}", is_server ? "server" : "client",
+                          (uint8_t) buffer_[0], (void *) buffer_.data());
+#endif
+            copy_body(std::span{buffer_.data(), received_size});
+        }
+
+        void copy_body(std::span<std::byte const> buffer) noexcept {
+            if (header_.mask) {
+                std::byte masking_key[4]{};
+                std::memcpy(masking_key, &header_.masking_key, 4);
+                for (size_t ii = 0; ii < header_.payload_length; ++ii) {
+                    buffer_[current_payload_offset_++] = buffer[header_.payload_offset + ii] xor masking_key[ii % 4];
+                }
+            } else {
+                std::memcpy(buffer_.data(), &buffer[header_.payload_offset], header_.payload_length);
+                current_payload_offset_ += header_.payload_length;
+            }
+        }
+
+        friend task<connection_request> net::tag_invoke<is_server, Socket>(tag_t<net::async_recv>,
+                                                                           connection<is_server, Socket> &conn,
+                                                                           std::stop_token);
+
+        friend task<std::span<const std::byte>> tag_invoke(tag_t<net::async_recv>, connection_request &req) {
+            uint32_t payload_offset = std::exchange(req.current_payload_offset_, 0);
+            co_return as_bytes(std::span{req.buffer_.data(), payload_offset});
+            //                    auto &socket = request.session_.socket();
+            //                    std::array<std::byte, 1024> buffer{};
+            //                    auto bytes_received = co_await
+            //                    net::async_recv(socket, buffer); request.header_ =
+            //                    header::parse(std::span{buffer.data(),
+            //                    bytes_received});
+            //                    request.copy_body(as_bytes(std::span{buffer}));
+            //                    co_return as_bytes(std::span{request.buffer_.data(),
+            //                    bytes_received});
+        }
+
+        friend bool tag_invoke(tag_t<net::has_pending_data>, connection_request &req) {
+            return !req.header_.fin || req.current_payload_offset_ != 0;
+        }
+    };
+
+    template<bool is_server, typename Socket>
+    class connection {
     public:
         static constexpr uint32_t max_ws_version_ = 13;
         const uint32_t ws_version;
         auto const &remote_endpoint() const noexcept { return remote_endpoint_; }
 
-
         connection(connection const &) = delete;
         connection(connection &&) noexcept = default;
-
 
         ~connection() noexcept = default;
 
@@ -45,64 +106,8 @@ namespace g6::ws {
         std::array<std::byte, 1024> data_{};
         net::ip_endpoint remote_endpoint_;
 
-        class request
-        {
-            connection &connection_;
-            std::span<std::byte> buffer_;
-            header header_;
-            size_t current_payload_offset_ = 0;
-
-            explicit request(connection &conn, size_t received_size) noexcept
-                : connection_{conn}, buffer_{connection_.data_}, header_{header::parse(
-                                                                     std::span{buffer_.data(), received_size})} {
-#ifdef G6_WEB_DEBUG
-                spdlog::debug("ws::request<{}>:\n"
-                              " - received {} bytes\n"
-                              " - payload_length={} bytes\n"
-                              " - payload_offset={} bytes",
-                              is_server ? "server" : "client", received_size, header_.payload_length,
-                              header_.payload_offset);
-                spdlog::debug("ws::request<{}>: first byte={}, buffer=0x{}", is_server ? "server" : "client",
-                              (uint8_t) buffer_[0], (void *) buffer_.data());
-#endif
-                copy_body(std::span{buffer_.data(), received_size});
-            }
-
-            void copy_body(std::span<std::byte const> buffer) noexcept {
-                if (header_.mask) {
-                    std::byte masking_key[4]{};
-                    std::memcpy(masking_key, &header_.masking_key, 4);
-                    for (size_t ii = 0; ii < header_.payload_length; ++ii) {
-                        buffer_[current_payload_offset_++] =
-                            buffer[header_.payload_offset + ii] xor masking_key[ii % 4];
-                    }
-                } else {
-                    std::memcpy(buffer_.data(), &buffer[header_.payload_offset], header_.payload_length);
-                    current_payload_offset_ += header_.payload_length;
-                }
-            }
-
-            friend task<request> net::tag_invoke<is_server, Socket>(tag_t<net::async_recv>, connection &conn,
-                                                                    std::stop_token);
-
-            friend task<std::span<const std::byte>> tag_invoke(tag_t<net::async_recv>, request &req) {
-                uint32_t payload_offset = std::exchange(req.current_payload_offset_, 0);
-                co_return as_bytes(std::span{req.buffer_.data(), payload_offset});
-                //                    auto &socket = request.session_.socket();
-                //                    std::array<std::byte, 1024> buffer{};
-                //                    auto bytes_received = co_await net::async_recv(socket, buffer);
-                //                    request.header_ = header::parse(std::span{buffer.data(), bytes_received});
-                //                    request.copy_body(as_bytes(std::span{buffer}));
-                //                    co_return as_bytes(std::span{request.buffer_.data(), bytes_received});
-            }
-
-            friend bool tag_invoke(tag_t<net::has_pending_data>, request &req) {
-                return !req.header_.fin || req.current_payload_offset_ != 0;
-            }
-        };
-
-        friend task<request> net::tag_invoke<is_server, Socket>(tag_t<net::async_recv>, connection &conn,
-                                                                std::stop_token);
+        friend task<connection_request<is_server, Socket>>
+        net::tag_invoke<is_server, Socket>(tag_t<net::async_recv>, connection &conn, std::stop_token);
 
         friend task<size_t> tag_invoke(tag_t<net::async_send>, connection &conn, std::span<std::byte const> data) {
             size_t data_offset = 0;

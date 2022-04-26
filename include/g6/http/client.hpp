@@ -14,8 +14,7 @@
 namespace g6::http {
 
     template<typename Context, typename Socket>
-    class client
-    {
+    class client {
         using client_buffer = std::array<std::byte, 1024>;
 
     public:
