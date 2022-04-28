@@ -71,9 +71,9 @@ auto make_body(const fs::path &root, std::string_view path) {
         spdlog::info("-- rel from parent: {}", from_parent);
 
         if (fs::is_directory(p)) {
-            dirs.push_back(poly::var{poly::obj{"url"_kw = from_root, "path"_kw = from_parent}});
+            dirs.emplace_back("url"_kw = from_root, "path"_kw = from_parent);
         } else {
-            files.push_back(poly::var{poly::obj{"url"_kw = from_root, "path"_kw = from_parent}});
+            files.emplace_back("url"_kw = from_root, "path"_kw = from_parent);
         }
     }
     return std::make_tuple(dirs, files);
@@ -84,10 +84,10 @@ auto make_breadcrumb(std::string_view path) {
 
     fs::path p{path};
     poly::vec<std::string> items{};
-    items.push_back(poly::var{poly::obj{"url"_kw = p.string(), "name"_kw = p.filename().string()}});
+    items.emplace_back("url"_kw = p.string(), "name"_kw = p.filename().string());
     p = p.parent_path();
     while (not p.filename().empty()) {
-        items.push_back(poly::var{poly::obj{"url"_kw = p.string(), "name"_kw = p.filename().string()}});
+        items.emplace_back("url"_kw = p.string(), "name"_kw = p.filename().string());
         p = p.parent_path();
     }
     std::ranges::reverse(items);
@@ -133,8 +133,9 @@ int main(int argc, char **argv) {
                 auto [dirs, files] = make_body(root_path, path);
                 std::optional<std::string> opt_error = std::nullopt;
                 try {
-                    auto page = temp("title"_kw = "Title", "path"_kw = "Path", "breadcrumb"_kw = make_breadcrumb(path),
-                                     "directories"_kw = dirs, "files"_kw = files);
+                    auto page =
+                        temp("title"_kw = "G6 fileserver", "path"_kw = path, "breadcrumb"_kw = make_breadcrumb(path),
+                             "directories"_kw = dirs, "files"_kw = files);
                     co_await net::async_send(*session, http::status::ok, as_bytes(std::span{page.data(), page.size()}));
                 } catch (std::exception const &error) { opt_error = error.what(); }
                 if (opt_error) {
