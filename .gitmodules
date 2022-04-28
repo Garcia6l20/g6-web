@@ -1,3 +1,0 @@
-[submodule "external/generator"]
-	path = external/generator
-	url = https://github.com/lewissbaker/generator.git
