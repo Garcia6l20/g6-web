@@ -27,6 +27,13 @@ TEST_CASE("json loading", "[g6::web::json]") {//
         REQUIRE(l[2] == "oops");
         REQUIRE(json::dump(dict) == R"({"value":42,"lst":[1,42.2,"oops"]})");
     }
+    SECTION("syntax error") {
+        REQUIRE_THROWS_AS(json::load(R"(\0)"), json::error);
+        REQUIRE_THROWS_AS(json::load(R"(opps)"), json::error);
+        REQUIRE_THROWS_AS(json::load(R"({opps})"), json::error);
+        REQUIRE_THROWS_AS(json::load(R"({"value"="hum"})"), json::error);
+        REQUIRE_THROWS_AS(json::load(R"({"value"42})"), json::error);
+    }
     SECTION("Benchmarks") {
         BENCHMARK("deserialization") { return json::load(std::string_view{R"({"value":42,"lst":[1,42.2,"oops"]})"}); };
         auto data = json::load(std::string_view{R"({"value":42,"lst":[1,42.2,"oops"]})"});

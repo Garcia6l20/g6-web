@@ -18,6 +18,11 @@ namespace g6::json {
     using object = poly::obj<boolean, number, string>;
     using none = poly::none;
 
+    class error : public std::exception {
+    public:
+        error(std::string_view what) noexcept : std::exception{what.data()} {}
+    };
+
     template<typename IterT>
     inline IterT it_find(const IterT &begin, const IterT &end, char c) {
         auto ii = begin;
@@ -36,9 +41,13 @@ namespace g6::json {
         object result;
         for (; begin != end && *begin != '}'; ++begin) {
             if (!isgraph(*begin)) continue;
-            begin = it_find(begin, end, '"') + 1;
+            begin = it_find(begin, end, '"');
+            if (begin == end) { throw error("syntax error"); }
+            ++begin;
             std::string key = parse_string(begin, end);
-            begin = it_find(begin, end, ':') + 1;
+            begin = it_find(begin, end, ':');
+            if (begin == end) { throw error("syntax error"); }
+            ++begin;
             result[std::move(key)] = load(begin, end);
         }
         return value{std::move(result)};
@@ -102,11 +111,13 @@ namespace g6::json {
 
     template<typename IterT>
     value parse_number(IterT &begin, const IterT &end) {
+        thread_local static std::array<char, sizeof(double) * 2> tmp_chars;
         double result = 0.;
-        size_t sz = 0;
-        result = std::stod(std::string(begin, end), &sz);
-        if (sz == 0) throw std::runtime_error("Error occured while parsing number");
-        begin += sz - 1;
+        auto [ptr, ec] = std::from_chars(&*begin, &*(end - 1), result);
+        if (ec != std::errc{}) {
+            throw error{format("failed to parse number: {}", std::make_error_code(ec).message())};
+        }
+        begin += ptr - &*begin;
         return value{result};
     }
 
