@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include <charconv>
+
 namespace g6::json {
 
     using boolean = bool;
@@ -142,6 +144,57 @@ namespace g6::json {
     value load(std::string_view data) {//
         auto begin = std::begin(data);
         return load(begin, std::end(data));
+    }
+
+    template<typename T>
+    std::string dump(T const &data) {
+        thread_local static std::array<char, sizeof(double) * 2> tmp_chars;
+        return poly::match(
+            [&](boolean val) -> std::string {//
+                return val ? "true" : "false";
+            },
+            [&](number val) -> std::string {//
+                auto [ptr, ec] = std::to_chars(tmp_chars.data(), tmp_chars.data() + tmp_chars.size(), val);
+                if (ec != std::errc{}) { throw std::system_error(std::make_error_code(ec)); }
+                return {tmp_chars.data(), ptr};
+            },
+            [&](string const &val) -> std::string {//
+                return '"' + val + '"';
+            },
+            [&](object const &val) -> std::string {//
+                std::string result = "{";
+                val | poly::for_each | [&, first = true]<typename Value>(string const &k, Value const &v) mutable {
+                    if (not first) {
+                        result += ',';
+                    } else {
+                        first = false;
+                    }
+                    result += '"' + k + "\":" + dump(v);
+                };
+                result += "}";
+                return result;
+            },
+            [&](list const &val) -> std::string {//
+                std::string result = "[";
+                val | poly::for_each | [&, first = true]<typename Value>(Value const &v) mutable {
+                    if (not first) {
+                        result += ',';
+                    } else {
+                        first = false;
+                    }
+                    result += dump(v);
+                };
+                result += "]";
+                return result;
+            },
+            [](auto &&...) -> std::string {//
+                throw std::runtime_error("invalid json value");
+            })(data);
+    }
+
+    std::string dump(value const &data) {
+        thread_local static std::array<char, sizeof(double) * 2> tmp_chars;
+        return data | poly::visit | []<typename T>(T const &val) { return dump(val); };
     }
 
 }// namespace g6::json
