@@ -15,7 +15,7 @@
 namespace g6::http {
 
     template<typename Socket>
-    struct server_response;
+    struct [[nodiscard]] server_response;
 
     template<typename T, size_t extent, typename Socket_>
     task<size_t> tag_invoke(tag_t<g6::net::async_send>, g6::http::server_response<Socket_> &stream,
@@ -23,10 +23,19 @@ namespace g6::http {
 
 
     template<typename Socket>
-    struct server_response {
+    struct [[nodiscard]] server_response {
         Socket &socket_;
         bool closed_{false};
         std::string size_str;
+
+        server_response(Socket &sock) noexcept : socket_{sock} {}
+
+        server_response(server_response &&other) noexcept
+            : socket_{other.socket_}, closed_{std::exchange(other.closed_, true)}, size_str{std::move(other.size_str)} {
+        }
+        server_response(server_response const &) = delete;
+
+        ~server_response() noexcept { assert(closed_); }
 
         template<typename T, size_t extent, typename Socket_>
         friend task<size_t> tag_invoke(tag_t<g6::net::async_send>, g6::http::server_response<Socket_> &stream,
@@ -73,8 +82,7 @@ namespace g6::http {
     };
 
     template<typename Socket>
-    class server_session
-    {
+    class server_session {
     public:
         Socket socket;
 
@@ -139,8 +147,8 @@ namespace g6::http {
                                    std::span{static_cast<const std::byte *>(nullptr), 0});
         }
 
-        friend task<server_response<Socket>> tag_invoke(tag_t<net::async_send>, server_session &session,
-                                                        http::status status, http::headers &&headers) {
+        friend [[nodiscard]] task<server_response<Socket>> tag_invoke(tag_t<net::async_send>, server_session &session,
+                                                                      http::status status, http::headers &&headers) {
             session.build_header(status, std::forward<http::headers>(headers));
             size_t sz = co_await net::async_send(
                 session.socket, as_bytes(std::span{session.header_data_.data(), session.header_data_.size()}));

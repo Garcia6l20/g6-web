@@ -1,5 +1,3 @@
-#include <g6/tag_invoke>
-
 #include <g6/poly/var.hpp>
 
 #include <cstddef>

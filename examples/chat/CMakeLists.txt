@@ -4,17 +4,20 @@ if(NOT XXD_EXE)
   return()
 endif()
 
-add_custom_command(OUTPUT js_main.hpp
-  COMMAND ${XXD_EXE} -i main.js ${CMAKE_CURRENT_BINARY_DIR}/js_main.hpp
-  DEPENDS main.js
-  WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
-  )
+function(make_resource input output)
+  add_custom_command(OUTPUT ${output}
+    COMMAND ${XXD_EXE} -i ${input} ${CMAKE_CURRENT_BINARY_DIR}/${output}
+    DEPENDS ${input}
+    WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
+    )
+endfunction()
 
-add_custom_command(OUTPUT html_index.hpp
-  COMMAND ${XXD_EXE} -i index.html ${CMAKE_CURRENT_BINARY_DIR}/html_index.hpp
-  DEPENDS index.html
-  WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
-  )
+make_resource(main.js main_js.hpp)
+make_resource(index.html index_html.hpp)
+make_resource(login.html login_html.hpp)
+
+
+set(CMAKE_CXX_STANDARD 23)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
@@ -22,8 +25,9 @@ find_package(spdlog REQUIRED)
 
 add_executable(g6-chat
   main.cpp
-  js_main.hpp
-  html_index.hpp)
+  main_js.hpp
+  index_html.hpp
+  login_html.hpp)
 target_link_libraries(g6-chat PRIVATE spdlog::spdlog g6::web g6::router)
 
 add_executable(g6-chat-bot

@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
+set(CMAKE_CXX_STANDARD 20)
+
 if (NOT G6_CMAKE)
   include(FetchContent)
   FetchContent_declare(g6-cmake-fetch

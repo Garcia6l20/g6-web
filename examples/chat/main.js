@@ -22,6 +22,7 @@ $('#user-form').submit(function( event ) {
 
 // Listen for messages
 socket.addEventListener('message', function (event) {{
-    console.log('Message from server ', event.data);
-    $('#room-messages').append(`<li class="list-group-item">${event.data}</li>`)
+    var data = JSON.parse(event.data);
+    console.log('Message from server ', data);
+    $('#room-messages').append(`<li class="list-group-item">${data.message} <small>${data.user}</small></li>`)
 }});

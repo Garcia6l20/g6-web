@@ -11,6 +11,7 @@
 #include <concepts>
 #include <iterator>
 #include <memory>
+#include <ranges>
 #include <span>
 #include <vector>
 
@@ -32,8 +33,7 @@ namespace g6::http::detail {
                            g6::http::detail::static_parser_handler<is_request_> &sph) noexcept;
 
     template<bool is_request>
-    class static_parser_handler
-    {
+    class static_parser_handler {
         using self_type = static_parser_handler<is_request>;
 
         static constexpr auto c_parser_type = []() {
@@ -164,9 +164,34 @@ namespace g6::http::detail {
             }
         }
 
+        std::optional<std::string_view> get_header(std::string_view key) const {
+            auto it = std::find_if(begin(headers_), end(headers_), [&](auto const &elem) { return elem.first == key; });
+            if (it == headers_.end()) {
+                return std::nullopt;
+            } else {
+                return std::string_view{it->second.data(), it->second.size()};
+            }
+        }
+
+        auto cookies() const {
+            std::map<std::string_view, std::string_view> result{};
+            if (auto hdr = get_header("Cookie"); hdr) {//
+                std::string_view semicol = ";";
+                std::string_view eq = "=";
+                for (const auto elem : std::views::split(*hdr, semicol)) {
+                    auto kv = std::views::split(elem, eq);
+                    auto kv_it = kv.begin();
+                    auto k = *kv_it;
+                    kv_it++;
+                    auto v = *kv_it;
+                    result[k] = v;
+                }
+            }
+            return result;
+        }
+
     protected:
-        enum class parser_status
-        {
+        enum class parser_status {
             none,
             on_message_begin,
             on_url,
