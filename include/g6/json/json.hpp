@@ -16,7 +16,8 @@ namespace g6::json {
     using value = poly::var<boolean, number, string>;
     using list = poly::vec<boolean, number, string>;
     using object = poly::obj<boolean, number, string>;
-    using none = poly::none;
+    using null_t = poly::none;
+    constexpr null_t null{};
 
     class error : public std::exception {
     public:
@@ -138,7 +139,7 @@ namespace g6::json {
                     return false;
                 case 'n':// assuming null
                     begin += 3;
-                    return none{};
+                    return null;
                 case '{':
                     return parse_object(++begin, end);
                 case '[':
@@ -161,6 +162,9 @@ namespace g6::json {
     std::string dump(T const &data) {
         thread_local static std::array<char, sizeof(double) * 2> tmp_chars;
         return poly::match(
+            [&](null_t val) -> std::string {//
+                return "null";
+            },
             [&](boolean val) -> std::string {//
                 return val ? "true" : "false";
             },
@@ -172,7 +176,7 @@ namespace g6::json {
             [&](string const &val) -> std::string {//
                 return '"' + val + '"';
             },
-            [&](object const &val) -> std::string {//
+            [&]<typename... Values>(poly::obj<Values...> const &val)->std::string {//
                 std::string result = "{";
                 val | poly::for_each | [&, first = true]<typename Value>(string const &k, Value const &v) mutable {
                     if (not first) {
@@ -185,7 +189,8 @@ namespace g6::json {
                 result += "}";
                 return result;
             },
-            [&](list const &val) -> std::string {//
+            // accept any kind of poly::vec, until the final value is convertible to number, string, bool or null
+            [&]<typename... Values>(poly::vec<Values...> const &val)->std::string {//
                 std::string result = "[";
                 val | poly::for_each | [&, first = true]<typename Value>(Value const &v) mutable {
                     if (not first) {
@@ -197,6 +202,11 @@ namespace g6::json {
                 };
                 result += "]";
                 return result;
+            },
+            // accept type convertible to number (ie.: int, float, etc...)
+            [&]<typename T>(T v) -> std::string requires(
+                                     std::is_arithmetic_v<T> and std::constructible_from<number, T>) {//
+                return dump(static_cast<number>(v));
             },
             [](auto &&...) -> std::string {//
                 throw std::runtime_error("invalid json value");
