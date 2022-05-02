@@ -56,26 +56,36 @@ TEST_CASE("http simple server", "[g6::web::http]") {
         [&]() -> task<> {
             co_await web::async_serve(server, stop_source, [&] {
                 return []<typename Session, typename Request>(Session &session, Request request) -> task<> {
+                    for (auto cookie : request.cookies()) {
+                        spdlog::info("cookie: {}={}", cookie.first, cookie.second);
+                    }
                     while (net::has_pending_data(request)) {
                         auto body = co_await net::async_recv(request);
                         auto sv_body = std::string_view{reinterpret_cast<char const *>(body.data()), body.size()};
                         spdlog::info("body: {}", sv_body);
                         REQUIRE(sv_body == "Hello !");
                     }
-                    co_await net::async_send(session, http::status::ok, as_bytes(std::span{"OK !", 4}));
+                    http::headers hdrs{{"Set-Cookie", "one=1"}, {"Set-Cookie", "two=2"}};
+                    co_await net::async_send(session, http::status::ok, std::move(hdrs),
+                                             as_bytes(std::span{"OK !", 4}));
                 };
             });
         }(),
         [&]() -> task<> {
-            scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
+            scope_guard _ = [&]() noexcept {//
+                stop_source.request_stop();
+            };
             auto client = co_await net::async_connect(ctx, web::proto::http, server_endpoint);
             co_await g6::schedule_after(ctx, 100ms);
-            auto response =
-                co_await net::async_send(client, "/", http::method::post, as_bytes(std::span{"Hello !", 7}));
-
+            http::headers hdrs{{"Cookie", "one=1; two=2"}};
+            auto response = co_await net::async_send(client, "/", http::method::post, as_bytes(std::span{"Hello !", 7}),
+                                                     std::move(hdrs));
             std::string body_str;
             while (net::has_pending_data(response)) {
                 auto body = co_await net::async_recv(response);
+                for (auto set_cookie : response.get_headers("Set-Cookie")) {//
+                    spdlog::info("set-cookie: {}", set_cookie);
+                }
                 body_str += std::string_view{reinterpret_cast<char *>(body.data()), body.size()};
                 spdlog::info("body: {}", body_str);
             }
