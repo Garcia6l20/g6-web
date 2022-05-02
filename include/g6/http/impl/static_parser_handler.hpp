@@ -1,6 +1,5 @@
 #pragma once
 
-#include <bits/ranges_base.h>
 #include <g6/http/http.hpp>
 #include <g6/net/net_cpo.hpp>
 #include <g6/utils/c_ptr.hpp>
