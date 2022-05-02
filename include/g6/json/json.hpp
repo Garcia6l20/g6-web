@@ -19,11 +19,14 @@ namespace g6::json {
 
     class error : public std::exception {
     public:
-        error(std::string_view what) noexcept : std::exception{what.data()} {}
+        error(std::string what) noexcept : std::exception{}, what_{std::move(what)} {}
+
+    private:
+        std::string what_;
     };
 
     template<typename IterT>
-    inline IterT it_find(const IterT &begin, const IterT &end, char c) {
+    constexpr IterT it_find(const IterT &begin, const IterT &end, char c) {
         auto ii = begin;
         for (; ii != end && *ii != c; ++ii) {}
         return ii;
@@ -202,8 +205,8 @@ namespace g6::json {
                 return result;
             },
             // accept type convertible to number (ie.: int, float, etc...)
-            [&]<typename T>(T v) -> std::string requires(
-                                     std::is_arithmetic_v<T> and std::constructible_from<number, T>) {//
+            [&]<typename U>(U v) -> std::string requires(
+                                     std::is_arithmetic_v<U> and std::constructible_from<number, U>) {//
                 return dump(static_cast<number>(v));
             },
             [](auto &&...) -> std::string {//

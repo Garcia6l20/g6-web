@@ -80,8 +80,8 @@ int main(int argc, char **argv) {
                                      router::context<http::server_request<net::async_socket>> request,
                                      router::context<user_session> us) -> task<void> {
             if (!us->logged) {
-                auto stream = co_await net::async_send(*session, http::status::temporary_redirect,
-                                                       http::headers{{"Location", "/login"}});
+                http::headers hdrs{{"Location", "/login"}};// gcc bug ???
+                auto stream = co_await net::async_send(*session, http::status::temporary_redirect, std::move(hdrs));
                 co_await net::async_send(stream);
             } else {
                 auto page = fmt::vformat(
@@ -107,10 +107,10 @@ int main(int argc, char **argv) {
             us->logged = true;
             us->username = jsn["username"].get<json::string>();
             std::string response_data = "ok";
-            co_await net::async_send(
-                *session, http::status::ok,
-                http::headers{{"Set-Cookie", fmt::format("username={}", jsn["username"].get<json::string>())}},
-                std::as_bytes(std::span{response_data.data(), response_data.size()}));
+            auto hdrs = http::headers{{"Set-Cookie", fmt::format("username={}", jsn["username"].get<json::string>())}};
+            co_await net::async_send(*session, http::status::ok,
+                                     std::move(hdrs),// gcc bug ? cannot be inplace-constructed
+                                     std::as_bytes(std::span{response_data.data(), response_data.size()}));
         }),
         http::route::get<R"(/chat)">([&](router::context<http::server_session<net::async_socket>> session,
                                          router::context<http::server_request<net::async_socket>> request,

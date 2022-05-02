@@ -1,9 +1,12 @@
 #pragma once
 
+#include <bits/ranges_base.h>
 #include <g6/http/http.hpp>
 #include <g6/net/net_cpo.hpp>
 #include <g6/utils/c_ptr.hpp>
 #include <g6/web/uri.hpp>
+
+#include <g6/generator.hpp>
 
 #include <fmt/format.h>
 
@@ -13,6 +16,8 @@
 #include <memory>
 #include <ranges>
 #include <span>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 namespace g6::http::detail {
@@ -173,18 +178,40 @@ namespace g6::http::detail {
             }
         }
 
+        g6::generator<std::string_view> get_headers(std::string_view key) {
+            auto it = begin(headers_);
+            while (it != end(headers_)) {
+                it = std::find_if(it, end(headers_), [&](auto const &elem) { return elem.first == key; });
+                if (it == end(headers_)) { break; }
+                co_yield std::string_view{it->second.data(), it->second.size()};
+                ++it;
+            }
+        }
+
+        static constexpr std::string_view ltrim(std::string_view input) {
+            input.remove_prefix(std::min(input.find_first_not_of(" "), input.size()));
+            return input;
+        }
+
+        static constexpr std::string_view rtrim(std::string_view input) {
+            auto end = input.find_last_not_of(" ");
+            if (end != std::string_view::npos) { input.remove_suffix(input.size() - end - 1); }
+            return input;
+        }
+        static constexpr std::string_view trim(std::string_view input) { return rtrim(ltrim(input)); }
+
         auto cookies() const {
             std::map<std::string_view, std::string_view> result{};
             if (auto hdr = get_header("Cookie"); hdr) {//
-                std::string_view semicol = ";";
-                std::string_view eq = "=";
-                for (const auto elem : std::views::split(*hdr, semicol)) {
-                    auto kv = std::views::split(elem, eq);
-                    auto kv_it = kv.begin();
-                    auto k = *kv_it;
-                    kv_it++;
-                    auto v = *kv_it;
-                    result[k] = v;
+                for (auto [k, v] : *hdr | std::views::split(';') | std::views::transform([](auto &&rng) {
+                         auto kv = std::string_view{&*rng.begin(), size_t(std::ranges::distance(rng))}
+                                 | std::views::split('=') | std::views::transform([](auto &&rng) {
+                                       return std::string_view{&*rng.begin(), size_t(std::ranges::distance(rng))};
+                                   });
+                         auto it = kv.begin();
+                         return std::pair{*it, *(++it)};
+                     })) {
+                    result[trim(k)] = trim(v);
                 }
             }
             return result;

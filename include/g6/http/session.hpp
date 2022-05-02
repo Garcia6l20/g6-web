@@ -147,8 +147,8 @@ namespace g6::http {
                                    std::span{static_cast<const std::byte *>(nullptr), 0});
         }
 
-        friend [[nodiscard]] task<server_response<Socket>> tag_invoke(tag_t<net::async_send>, server_session &session,
-                                                                      http::status status, http::headers &&headers) {
+        friend task<server_response<Socket>> tag_invoke(tag_t<net::async_send>, server_session &session,
+                                                        http::status status, http::headers &&headers) {
             session.build_header(status, std::forward<http::headers>(headers));
             size_t sz = co_await net::async_send(
                 session.socket, as_bytes(std::span{session.header_data_.data(), session.header_data_.size()}));
