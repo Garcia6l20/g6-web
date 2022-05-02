@@ -17,12 +17,9 @@ namespace g6::json {
     using null_t = poly::none;
     constexpr null_t null{};
 
-    class error : public std::exception {
+    class error : public std::runtime_error {
     public:
-        error(std::string what) noexcept : std::exception{}, what_{std::move(what)} {}
-
-    private:
-        std::string what_;
+        error(std::string const &what) noexcept : std::runtime_error{what} {}
     };
 
     template<typename IterT>
