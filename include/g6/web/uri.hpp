@@ -3,16 +3,35 @@
  */
 #pragma once
 
+#include <g6/config.hpp>
+
 #include <ctre.hpp>
 
 #include <fmt/format.h>
 
 #include <g6/net/ip_endpoint.hpp>
 
+#include <bit>
 #include <charconv>
 #include <optional>
 #include <string_view>
 #include <vector>
+
+#if G6_OS_LINUX
+#include <netdb.h>
+#endif
+
+namespace g6 {
+    template<typename T>
+    T byteswap(T const &input) {
+        std::byte src[sizeof(T)];
+        std::memcpy(src, &input, sizeof(T));
+
+        std::byte dst[sizeof(T)];
+        for (size_t ii = 0; ii < sizeof(T); ++ii) { dst[ii] = src[sizeof(T) - ii - 1]; }
+        return std::bit_cast<T>(dst);
+    }
+}// namespace g6
 
 namespace g6::web {
     class uri {
@@ -44,7 +63,43 @@ namespace g6::web {
         }
 
         [[nodiscard]] std::optional<net::ip_endpoint> endpoint() const {
-            return net::ip_endpoint::from_string(fmt::format("{}:{}", host, port));
+            auto addr = net::ip_address::from_string(host);
+            if (!addr) {//
+                struct hostent *he = nullptr;
+                struct hostent he_data = {0};
+                char buffer[2048] = {0};
+                int errnum;
+                char c_str[256];
+                std::memcpy(c_str, host.data(), host.size());
+                c_str[host.size()] = 0;
+
+#ifdef G6_OS_LINUX
+                gethostbyname_r(c_str, &he_data, buffer, sizeof(buffer), &he, &errnum);
+#else
+                he = gethostbyname_r(c_str, &he_data, buffer, sizeof(buffer), &errnum);
+#endif
+                if (he == nullptr) { return std::nullopt; }
+                if (he->h_addr_list[0][4] == 0) {
+                    uint32_t addr_value;
+                    std::memcpy(&addr_value, he->h_addr_list[0], sizeof(uint32_t));
+                    addr = net::ipv4_address{g6::byteswap(addr_value)};
+                } else {
+                    uint64_t subnet_prefix;
+                    uint64_t interface_identifier;
+                    std::memcpy(&subnet_prefix, he->h_addr_list[0], sizeof(uint64_t));
+                    std::memcpy(&interface_identifier, he->h_addr_list[0] + sizeof(uint64_t), sizeof(uint64_t));
+                    addr = net::ipv6_address{subnet_prefix, interface_identifier};
+                }
+            }
+
+            uint16_t port_value = 0;
+            if (!port.empty()) {
+                auto [ptr, ec] = std::from_chars(port.data(), port.data() + port.size(), port_value);
+                if (ec != std::errc{}) { throw std::system_error(std::make_error_code(ec)); }
+                // port_value = htons(port_value);
+            }
+
+            return net::ip_endpoint{*addr, port_value};
         }
 
         [[nodiscard]] bool uses_ssl() const noexcept {
