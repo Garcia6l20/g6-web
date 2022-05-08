@@ -18,13 +18,13 @@ TEST_CASE("http server stop", "[g6::web::http]") try {
     web::context ctx{};
     std::stop_source stop_source{};
 
-    auto server = web::make_server(ctx, web::proto::http, *net::ip_endpoint::from_string("127.0.0.1:0"));
+    auto server = web::make_server(ctx, web::proto::http, *from_string<net::ip_endpoint>("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
-    spdlog::info("server listening at: {}", server_endpoint.to_string());
+    spdlog::info("server listening at: {}", server_endpoint);
 
     sync_wait(
         [&]() -> task<> {
-            co_await web::async_serve(server, stop_source, [&] {
+            co_await web::async_serve(server, stop_source.get_token(), [&] {
                 return []<typename Session, typename Request>(Session &session, Request request) -> task<> {
                     FAIL("Should not be reached !");
                     co_return;
@@ -46,16 +46,20 @@ TEST_CASE("http server stop", "[g6::web::http]") try {
 TEST_CASE("http simple server", "[g6::web::http]") {
     spdlog::set_level(spdlog::level::debug);
     web::context ctx{};
-    std::stop_source stop_source{};
+    std::stop_source stop_server{};
+    std::stop_source stop{};
 
-    auto server = web::make_server(ctx, web::proto::http, *net::ip_endpoint::from_string("127.0.0.1:0"));
+    auto server = web::make_server(ctx, web::proto::http, *g6::from_string<net::ip_endpoint>("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
-    spdlog::info("server listening at: {}", server_endpoint.to_string());
+    spdlog::info("server listening at: {}", server_endpoint);
 
     sync_wait(
         [&]() -> task<> {
-            co_await web::async_serve(server, stop_source, [&] {
-                return []<typename Session, typename Request>(Session &session, Request request) -> task<> {
+            scope_guard _ = [&]() noexcept {//
+                stop.request_stop();
+            };
+            co_await web::async_serve(server, stop_server.get_token(), [&] {
+                return [&]<typename Session, typename Request>(Session &session, Request request) -> task<> {
                     for (auto cookie : request.cookies()) {
                         spdlog::info("cookie: {}={}", cookie.first, cookie.second);
                     }
@@ -73,7 +77,7 @@ TEST_CASE("http simple server", "[g6::web::http]") {
         }(),
         [&]() -> task<> {
             scope_guard _ = [&]() noexcept {//
-                stop_source.request_stop();
+                stop_server.request_stop();
             };
             auto client = co_await net::async_connect(ctx, web::proto::http, server_endpoint);
             co_await g6::schedule_after(ctx, 100ms);
@@ -92,5 +96,5 @@ TEST_CASE("http simple server", "[g6::web::http]") {
             REQUIRE(response.status_code() == http::status::ok);
             REQUIRE(body_str == "OK !");
         }(),
-        g6::async_exec(ctx, stop_source.get_token()));
+        g6::async_exec(ctx, stop.get_token()));
 }

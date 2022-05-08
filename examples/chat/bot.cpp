@@ -42,7 +42,7 @@ int main(int argc, char **argv) {
         return -1;
     }
 
-    spdlog::info("running bot for server at: {}", endpoint->to_string());
+    spdlog::info("running bot for server at: {}", *endpoint);
 
     using session_t = ws::client<web::context, net::async_socket>;
 

@@ -17,14 +17,14 @@ TEST_CASE("ws simple server", "[g6::web::ws]") {
     web::context ctx{};
     std::stop_source stop_source{};
 
-    auto server = web::make_server(ctx, web::proto::ws, *net::ip_endpoint::from_string("127.0.0.1:0"));
+    auto server = web::make_server(ctx, web::proto::ws, *from_string<net::ip_endpoint>("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
 
-    spdlog::info("server listening at: {}", server_endpoint.to_string());
+    spdlog::info("server listening at: {}", server_endpoint);
 
     sync_wait(
         [&]() -> task<void> {
-            co_await web::async_serve(server, stop_source, [&] {
+            co_await web::async_serve(server, stop_source.get_token(), [&] {
                 return [&stop_source]<typename Session, typename Request>(Session &session,
                                                                           Request request) -> task<void> {
                     scope_guard _ = [&]() noexcept { stop_source.request_stop(); };

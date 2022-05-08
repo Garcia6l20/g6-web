@@ -25,18 +25,18 @@ TEST_CASE("https simple server", "[g6::web::https]") {
     const ssl::certificate certificate{cert};
     const ssl::private_key private_key{key};
 
-    auto server = web::make_server(ctx, web::proto::https, *net::ip_endpoint::from_string("127.0.0.1:0"), certificate,
+    auto server = web::make_server(ctx, web::proto::https, *from_string<net::ip_endpoint>("127.0.0.1:0"), certificate,
                                    private_key);
     auto server_endpoint = *server.socket.local_endpoint();
     server.socket.host_name("localhost");
     server.socket.set_peer_verify_mode(ssl::peer_verify_mode::optional);
     server.socket.set_verify_flags(ssl::verify_flags::allow_untrusted);
 
-    spdlog::info("server listening at: {}", server_endpoint.to_string());
+    spdlog::info("server listening at: {}", server_endpoint);
 
     sync_wait(
         [&]() -> task<void> {
-            co_await web::async_serve(server, stop_source, [&] {
+            co_await web::async_serve(server, stop_source.get_token(), [&] {
                 return [&]<typename Session, typename Request>(Session &session, Request request) -> task<void> {
                     while (net::has_pending_data(request)) {
                         auto body = co_await net::async_recv(request);

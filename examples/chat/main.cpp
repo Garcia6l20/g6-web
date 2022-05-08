@@ -66,10 +66,10 @@ int main(int argc, char **argv) {
     std::signal(SIGINT, term_handler);
     std::signal(SIGTERM, term_handler);
 
-    auto server = web::make_server(context, web::proto::http, *net::ip_endpoint::from_string("127.0.0.1:8080"));
+    auto server = web::make_server(context, web::proto::http, *from_string<net::ip_endpoint>("127.0.0.1:8080"));
     auto server_endpoint = *server.socket.local_endpoint();
     fs::path root_path = ".";
-    spdlog::info("server listening at: http://{}", server_endpoint.to_string());
+    spdlog::info("server listening at: http://{}", server_endpoint);
 
     g6::ff_spawner scope{};
     std::list<ws::server_session<net::async_socket> *> all_sessions{};
@@ -84,10 +84,10 @@ int main(int argc, char **argv) {
                 auto stream = co_await net::async_send(*session, http::status::temporary_redirect, std::move(hdrs));
                 co_await net::async_send(stream);
             } else {
-                auto page = fmt::vformat(
-                    html::index,
-                    fmt::make_format_args(fmt::arg("address", server_endpoint.address().to_string()),
-                                          fmt::arg("port", server_endpoint.port()), fmt::arg("js_main", js::main)));
+                auto page =
+                    fmt::vformat(html::index, fmt::make_format_args(fmt::arg("address", server_endpoint.address()),
+                                                                    fmt::arg("port", server_endpoint.port()),
+                                                                    fmt::arg("js_main", js::main)));
                 co_await net::async_send(*session, http::status::ok,
                                          std::as_bytes(std::span{page.data(), page.size()}));
             }
@@ -122,7 +122,7 @@ int main(int argc, char **argv) {
             }
             auto username = cookies.at("username");
 
-            spdlog::info("got chat request on {} {}", session->remote_endpoint().to_string(), username);
+            spdlog::info("got chat request on {} {}", session->remote_endpoint(), username);
             auto ws_session = co_await web::upgrade_connection(web::proto::ws, *session, *request);
             spdlog::info("connection upgraded...");
             scope->spawn([](auto session, auto &all_sessions, const std::string username) -> task<void> {
@@ -135,23 +135,22 @@ int main(int argc, char **argv) {
                             auto data = co_await net::async_recv(message);
                             full_data += as_string_view(data);
                         }
-                        spdlog::info("data from {} ({}): {}", username, session.remote_endpoint().to_string(),
-                                     full_data);
+                        spdlog::info("data from {} ({}): {}", username, session.remote_endpoint(), full_data);
                         spdlog::info("{} other connections", std::size(all_sessions) - 1);
                         using namespace poly::literals;
                         auto data_for_others = json::dump(json::object{"user"_kw = username, "message"_kw = full_data});
                         for (auto other_session : all_sessions) {
                             if (*other_session != session) {
-                                spdlog::info("sending data to: {}", other_session->remote_endpoint().to_string());
+                                spdlog::info("sending data to: {}", other_session->remote_endpoint());
                                 co_await net::async_send(*other_session, as_bytes(std::span{data_for_others.data(),
                                                                                             data_for_others.size()}));
                             }
                         }
                     } catch (std::system_error const &error) {
                         if (error.code() != std::errc::connection_reset) {
-                            spdlog::error("error on {}: {}", session.remote_endpoint().to_string(), error.what());
+                            spdlog::error("error on {}: {}", session.remote_endpoint(), error.what());
                         }
-                        spdlog::error("connection reset: {}", session.remote_endpoint().to_string());
+                        spdlog::error("connection reset: {}", session.remote_endpoint());
                         break;
                     }
                 std::erase_if(all_sessions, [&](auto const &other) { return other == &session; });
@@ -168,7 +167,7 @@ int main(int argc, char **argv) {
         })};
     sync_wait(
         [&]() -> task<void> {
-            co_await web::async_serve(server, g_stop_source, [&] {
+            co_await web::async_serve(server, g_stop_source.get_token(), [&] {
                 return [root_path, &router, &scope = scope, us = user_session{}]<typename Session, typename Request>(
                            Session &session, Request request) mutable -> task<void> {
                     co_await router(request.url(), request.method(), std::ref(session), std::ref(request),

@@ -9,5 +9,5 @@ TEST_CASE("g6::web::uri: address resolution", "[g6][web]") {
     web::uri uri{"http://google.com:80"};
     auto ep = uri.endpoint();
     REQUIRE(ep);
-    spdlog::info("google endpoint: {}", ep->to_string());
+    spdlog::info("google endpoint: {}", *ep);
 }

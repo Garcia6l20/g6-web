@@ -9,6 +9,7 @@
 
 #include <fmt/format.h>
 
+#include <g6/net/ip_address.hpp>
 #include <g6/net/ip_endpoint.hpp>
 
 #include <bit>
@@ -63,7 +64,7 @@ namespace g6::web {
         }
 
         [[nodiscard]] std::optional<net::ip_endpoint> endpoint() const {
-            auto addr = net::ip_address::from_string(host);
+            auto addr = g6::from_string<net::ip_address>(host);
             if (!addr) {//
                 struct hostent *he = nullptr;
                 struct hostent he_data = {0};
@@ -94,9 +95,7 @@ namespace g6::web {
 
             uint16_t port_value = 0;
             if (!port.empty()) {
-                auto [ptr, ec] = std::from_chars(port.data(), port.data() + port.size(), port_value);
-                if (ec != std::errc{}) { throw std::system_error(std::make_error_code(ec)); }
-                // port_value = htons(port_value);
+                if (auto parsed_port = from_string<uint16_t>(port); parsed_port) { port_value = *parsed_port; }
             }
 
             return net::ip_endpoint{*addr, port_value};

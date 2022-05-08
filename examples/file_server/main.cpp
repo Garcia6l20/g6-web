@@ -115,7 +115,7 @@ int main(int argc, char **argv) {
     std::signal(SIGUSR1, term_handler);
 #endif
 
-    auto server = web::make_server(context, web::proto::http, *net::ip_endpoint::from_string("127.0.0.1:0"));
+    auto server = web::make_server(context, web::proto::http, *from_string<net::ip_endpoint>("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
     fs::path root_path = fs::current_path();
 
@@ -171,8 +171,8 @@ int main(int argc, char **argv) {
         })};
     sync_wait(
         [&]() -> task<void> {
-            spdlog::info("server listening at: http://{}\n", server_endpoint.to_string());
-            co_await web::async_serve(server, g_stop_source, [&] {
+            spdlog::info("server listening at: http://{}\n", server_endpoint);
+            co_await web::async_serve(server, g_stop_source.get_token(), [&] {
                 return [root_path, &router, &context]<typename Session, typename Request>(
                            Session &session, Request request) mutable -> task<void> {
                     spdlog::info("{}", request.url());
@@ -184,7 +184,6 @@ int main(int argc, char **argv) {
                 };
             });
             spdlog::info("terminated !");
-            co_return;
         }(),
         async_exec(context, g_stop_source.get_token()));
 }
