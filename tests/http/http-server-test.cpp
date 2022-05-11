@@ -4,11 +4,11 @@
 
 #include <g6/web/context.hpp>
 
+#include <g6/coro/sync_wait.hpp>
 #include <g6/http/client.hpp>
 #include <g6/http/server.hpp>
 #include <g6/io/context.hpp>
 #include <g6/scope_guard.hpp>
-#include <g6/sync_wait.hpp>
 
 using namespace g6;
 using namespace std::chrono_literals;

@@ -7,7 +7,7 @@
 #include <g6/http/server.hpp>
 #include <g6/web/context.hpp>
 
-#include <g6/sync_wait.hpp>
+#include <g6/coro/sync_wait.hpp>
 
 #include <ranges>
 

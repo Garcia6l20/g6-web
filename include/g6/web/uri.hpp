@@ -3,7 +3,7 @@
  */
 #pragma once
 
-#include <g6/config.hpp>
+#include <g6/coro/config.hpp>
 
 #include <ctre.hpp>
 

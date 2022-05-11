@@ -6,7 +6,7 @@
 #include <g6/net/net_cpo.hpp>
 #include <g6/web/web_cpo.hpp>
 
-#include <g6/task.hpp>
+#include <g6/coro/task.hpp>
 
 #include <algorithm>
 #include <stop_token>

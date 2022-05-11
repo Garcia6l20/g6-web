@@ -9,8 +9,8 @@
 #include <g6/ssl/certificate.hpp>
 #include <g6/ssl/key.hpp>
 
+#include <g6/coro/sync_wait.hpp>
 #include <g6/scope_guard.hpp>
-#include <g6/sync_wait.hpp>
 
 #include <cert.hpp>
 

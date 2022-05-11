@@ -5,7 +5,7 @@
 #include <g6/utils/c_ptr.hpp>
 #include <g6/web/uri.hpp>
 
-#include <g6/generator.hpp>
+#include <g6/coro/generator.hpp>
 
 #include <fmt/format.h>
 
