@@ -17,6 +17,8 @@
 #include <optional>
 #include <string_view>
 #include <vector>
+#include <ranges>
+#include <algorithm>
 
 #if G6_OS_LINUX
 #include <netdb.h>
@@ -103,7 +105,7 @@ namespace g6::web {
 
         [[nodiscard]] bool uses_ssl() const noexcept {
             static std::vector ssl_schemes{"https", "wss"};
-            return std::find(std::begin(ssl_schemes), std::end(ssl_schemes), scheme) != std::end(ssl_schemes);
+            return std::ranges::find(ssl_schemes, scheme) != std::end(ssl_schemes);
         }
 
         static auto escape(std::string_view input) {
