@@ -51,7 +51,9 @@ namespace g6 {
         task<ws::client<Context, Socket>>
         tag_invoke(tag_t<web::upgrade_connection>, http::client<Context, Socket> &http_client,
                    std::type_identity<ws::client<Context, Socket>>, std::string_view path = "/") {
-            std::string hash = crypto::base64::encode(ws::client<Context, Socket>::random_string(20));
+            const auto key_base = ws::client<Context, Socket>::random_string(16);
+            std::string hash = crypto::base64::encode(key_base);
+            spdlog::debug("ws::upgrade: key: {}, base64: {}", key_base, hash);
             http::headers hdrs{
                 {"Connection", "Upgrade"},
                 {"Upgrade", "websocket"},
@@ -59,7 +61,9 @@ namespace g6 {
                 {"Sec-WebSocket-Version", std::to_string(ws::client<Context, Socket>::max_ws_version_)},
             };
             auto response = co_await net::async_send(http_client, path, http::method::get, std::move(hdrs));
-            while (net::has_pending_data(response)) { co_await net::async_recv(response); }
+            while (net::has_pending_data(response)) {//
+                co_await net::async_recv(response);
+            }
             if (response.status_code() != http::status::switching_protocols) {
                 throw std::system_error(int(response.status_code()), http::error_category, "upgrade_connection");
             }

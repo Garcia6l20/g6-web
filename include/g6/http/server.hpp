@@ -70,28 +70,36 @@ namespace g6 {
                     auto http_session = server_session<SocketT>{std::move(sock), address};
                     spdlog::info("client connected: {}", address);
                     auto session = co_await web::upgrade_connection(server.proto, http_session);
-                    scope.spawn([](auto session, auto request_handler, std::stop_token stop) mutable -> task<void> {
-                        try {
-                            while (not stop.stop_requested()) {
-                                auto request = co_await net::async_recv(session, stop);
-                                co_await request_handler(session, std::move(request));
-                            }
-                        } catch (std::system_error const &error) {
-                            auto ec = error.code();
-                            if (ec == std::errc::connection_reset) {
-                                spdlog::info("connection reset '{}'", session.remote_endpoint());
-                            } else if (ec == std::errc::operation_canceled) {
-                                spdlog::info("operation canceled '{}'", session.remote_endpoint());
-                            } else {
-                                spdlog::error("connection {} error '{}'", session.remote_endpoint(),
-                                              error.code().message());
+                    auto handler = request_handler_builder();
+
+                    if constexpr (requires{ co_await handler(std::move(session), stop_token); }) {
+                        // session handler
+                        scope.spawn(handler(std::move(session), stop_token));
+                    } else {
+                        // assume request handler
+                        scope.spawn([](auto session, auto request_handler, std::stop_token stop) mutable -> task<void> {
+                            try {
+                                while (not stop.stop_requested()) {
+                                    auto request = co_await net::async_recv(session, stop);
+                                    co_await request_handler(session, std::move(request));
+                                }
+                            } catch (std::system_error const &error) {
+                                auto ec = error.code();
+                                if (ec == std::errc::connection_reset) {
+                                    spdlog::info("connection reset '{}'", session.remote_endpoint());
+                                } else if (ec == std::errc::operation_canceled) {
+                                    spdlog::info("operation canceled '{}'", session.remote_endpoint());
+                                } else {
+                                    spdlog::error("connection {} error '{}'", session.remote_endpoint(),
+                                                error.code().message());
+                                    throw;
+                                }
+                            } catch (std::exception const &error) {
+                                spdlog::error("connection {} error '{}'", session.remote_endpoint(), error.what());
                                 throw;
                             }
-                        } catch (std::exception const &error) {
-                            spdlog::error("connection {} error '{}'", session.remote_endpoint(), error.what());
-                            throw;
-                        }
-                    }(std::move(session), std::forward<RequestHandlerBuilder>(request_handler_builder)(), stop_token));
+                        }(std::move(session), std::move(handler), stop_token));
+                    }
                 }
             } catch (std::system_error const &error) {
                 if (error.code() == std::errc::operation_canceled) {
