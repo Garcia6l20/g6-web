@@ -42,16 +42,15 @@ namespace g6::http {
                                        std::span<T, extent> data) {
             assert(!stream.closed_);
             stream.size_str = fmt::format("{:x}\r\n", data.size());
-            co_await net::async_send(stream.socket_,
-                                     as_bytes(std::span{stream.size_str.data(), stream.size_str.size()}));
+            co_await net::async_send(stream.socket_, stream.size_str);
             co_await net::async_send(stream.socket_, data);
-            co_await net::async_send(stream.socket_, as_bytes(std::span{"\r\n", 2}));
+            co_await net::async_send(stream.socket_, "\r\n");
             co_return data.size();
         }
 
         friend auto tag_invoke(tag_t<net::async_send>, server_response &stream) {
             stream.closed_ = true;
-            return net::async_send(stream.socket_, as_bytes(std::span{"0\r\n\r\n", 5}));
+            return net::async_send(stream.socket_, "0\r\n\r\n");
         }
     };
 
@@ -121,8 +120,7 @@ namespace g6::http {
                 session.socket, as_writable_bytes(std::span{session.buffer_.data(), session.buffer_.size()}), stop);
             if (bytes == 0) { throw std::system_error{std::make_error_code(std::errc::connection_reset)}; }
             server_request req{session.socket, session.buffer_};
-            std::span<std::byte const> data = as_bytes(std::span{session.buffer_.data(), bytes});
-            req.parse(data);
+            req.parse(as_bytes(std::span{session.buffer_.data(), bytes}));
             co_return req;
         }
 
@@ -131,9 +129,8 @@ namespace g6::http {
                                        http::headers hdrs, std::span<T, extent> data) {
             if (data.size()) { hdrs.emplace("Content-Length", std::to_string(data.size())); }
             session.build_header(status, std::move(hdrs));
-            co_await net::async_send(session.socket,
-                                     as_bytes(std::span{session.header_data_.data(), session.header_data_.size()}));
-            co_return co_await net::async_send(session.socket, as_bytes(std::span{data.data(), data.size()}));
+            co_await net::async_send(session.socket, session.header_data_);
+            co_return co_await net::async_send(session.socket, data);
         }
 
         template<typename T, size_t extent>
@@ -150,8 +147,7 @@ namespace g6::http {
         friend task<server_response<Socket>> tag_invoke(tag_t<net::async_send>, server_session &session,
                                                         http::status status, http::headers &&headers) {
             session.build_header(status, std::forward<http::headers>(headers));
-            size_t sz = co_await net::async_send(
-                session.socket, as_bytes(std::span{session.header_data_.data(), session.header_data_.size()}));
+            size_t sz = co_await net::async_send(session.socket, session.header_data_);
             co_return server_response{session.socket};
         }
     };

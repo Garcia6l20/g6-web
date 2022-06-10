@@ -1,3 +1,5 @@
+#pragma once
+
 #include <g6/poly/var.hpp>
 
 #include <cstddef>

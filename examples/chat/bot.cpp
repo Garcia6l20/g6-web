@@ -55,11 +55,11 @@ int main(int argc, char **argv) {
             } else {
                 body_str = fmt::format("Heisenber !");
             }
-            co_await net::async_send(*session, std::as_bytes(std::span{body_str.data(), body_str.size()}));
+            co_await net::async_send(*session, body_str);
         }),
         g6::router::on<R"((.*))">([](std::string body_str, router::context<session_t> session) -> task<> {
             if (body_str.size()) {
-                co_await net::async_send(*session, std::as_bytes(std::span{body_str.data(), body_str.size()}));
+                co_await net::async_send(*session, body_str);
             }
         }),
     };
@@ -71,13 +71,9 @@ int main(int argc, char **argv) {
 
             while (true) {
                 auto response = co_await net::async_recv(session, g_stop_source.get_token());
-                std::string body_str;
-                while (net::has_pending_data(response)) {
-                    auto body = co_await net::async_recv(response);
-                    auto body_sv = as_string_view(body);
-                    body_str += body_sv;
-                }
-                co_await responder(body_str, std::ref(session));
+                std::string body;
+                co_await net::async_recv(response, std::back_inserter(body));
+                co_await responder(body, std::ref(session));
             }
 
             spdlog::info("done");
