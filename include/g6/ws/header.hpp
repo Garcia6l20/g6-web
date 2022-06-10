@@ -49,6 +49,7 @@ namespace g6::ws {
     }
 
     enum class status_code : uint16_t {
+        undefined = 0,
         normal_closure = 1000,
         going_away = 1001,
         protocol_error = 1002,

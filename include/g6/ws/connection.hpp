@@ -2,12 +2,13 @@
 
 #include <g6/ws/header.hpp>
 
-#include <g6/coro/task.hpp>
 #include <g6/coro/sync_wait.hpp>
+#include <g6/coro/task.hpp>
+
+#include <g6/algoritm>
 
 #include <algorithm>
 #include <bit>
-#include <expected>
 #include <span>
 #include <stop_token>
 
@@ -44,38 +45,44 @@ namespace g6::ws {
         friend task<message<is_server, Socket>> tag_invoke(tag_t<net::async_recv>, connection<is_server, Socket> &conn,
                                                            std::stop_token stop);
 
-        task<std::expected<size_t, status_code>> async_recv(std::span<std::byte> data) {
+        task<size_t> async_recv(std::span<std::byte> data) {
             ssize_t remaining_size = header_.payload_length - current_payload_offset_;
             if (remaining_size <= 0) {
                 assert(!header_.fin);
                 header_ = co_await header::receive(socket_);
                 current_payload_offset_ = 0;
                 remaining_size = header_.payload_length - current_payload_offset_;
-            }
-
-            if (header_.opcode == op_code::connection_close) {
-                if (header_.payload_length == 2) {
-                    // get status
-                    uint16_t status;
-                    co_await net::async_recv(socket_, as_writable_bytes(std::span{&status, 1}));
-                    header_.mask_body(as_writable_bytes(std::span{&status, 1}));
-                    co_return std::unexpected{status_code(std::byteswap(status))};
-                } else {
-                    co_return std::unexpected{status_code::closed_abnormally};
+                spdlog::debug("opcode: {}, fin: {}, len: {}", to_string(header_.opcode), header_.fin,
+                              header_.payload_length);
+                if (header_.opcode == op_code::connection_close) {
+                    current_payload_offset_ = header_.payload_length;
+                    if (header_.payload_length == 2) {
+                        // get status
+                        uint16_t status;
+                        co_await net::async_recv(socket_, as_writable_bytes(std::span{&status, 1}));
+                        header_.mask_body(as_writable_bytes(std::span{&status, 1}));
+                        connection_.status_ = status_code(std::byteswap(status));
+                        co_return 0;
+                    } else {
+                        connection_.status_ = status_code::closed_abnormally;
+                        co_return 0;
+                    }
                 }
             }
-            spdlog::debug("opcode: {}, fin: {}, len: {}", to_string(header_.opcode), header_.fin,
-                          header_.payload_length);
             auto bytes_to_receive = std::min(data.size(), size_t(remaining_size));
             if (bytes_to_receive == 0) { co_return 0; }
             size_t rx_size = co_await net::async_recv(socket_, std::span{data.data(), bytes_to_receive});
             header_.mask_body(std::span{data.data(), rx_size});
+
             current_payload_offset_ += rx_size;
+
+            spdlog::debug("received: {} bytes ({}/{})", rx_size, current_payload_offset_,
+                          header_.payload_length);
+
             co_return rx_size;
         }
 
-        friend task<std::expected<size_t, status_code>> tag_invoke(tag_t<net::async_recv>, message &req,
-                                                                   std::span<std::byte> data) {
+        friend task<size_t> tag_invoke(tag_t<net::async_recv>, message &req, std::span<std::byte> data) {
             return req.async_recv(data);
         }
 
@@ -92,6 +99,13 @@ namespace g6::ws {
         Socket socket_;
         net::ip_endpoint remote_endpoint_;
         const uint32_t ws_version;
+
+        static uint32_t make_masking_key() noexcept {
+            static std::mt19937 rng{size_t(time(nullptr) * getpid())};
+            return uint32_t(rng());
+        }
+
+        status_code status_ = status_code::undefined;
 
     public:
         static constexpr uint32_t max_ws_version_ = 13;
@@ -113,18 +127,17 @@ namespace g6::ws {
                 .mask = not is_server,
                 .payload_length = sizeof(status),
             };
-            if constexpr (not is_server) {
-                h.masking_key = std::rand();
-            }
+            if constexpr (not is_server) { h.masking_key = make_masking_key(); }
             co_await h.send(socket_);
             // status
             status = std::byteswap(status);
             h.mask_body(as_writable_bytes(std::span{&status, 1}));
-            co_await net::async_send(socket_, as_bytes(std::span{&status, 1}));
+            co_await net::async_send(socket_, std::span{&status, 1});
         }
 
-    private:
+        auto status() const noexcept { return status_; }
 
+    private:
         template<bool is_server_, typename Socket_>
         friend task<message<is_server_, Socket_>> tag_invoke(tag_t<net::async_recv>,
                                                              connection<is_server_, Socket_> &conn, std::stop_token);
@@ -138,17 +151,19 @@ namespace g6::ws {
             };
             if constexpr (not is_server) {
                 h.mask = true;
-                h.masking_key = std::rand();
+                h.masking_key = make_masking_key();
                 co_await h.send(conn.socket_);
                 std::array<std::byte, 128> masked_data;
                 size_t remaining_size = data.size();
                 while (remaining_size) {
-                    const size_t tmp_size = std::min(data.size(), masked_data.size());
+                    const size_t tmp_size = tl::min(data.size(), masked_data.size(), remaining_size);
                     std::memcpy(masked_data.data(), data.data() + data.size() - remaining_size, tmp_size);
                     h.mask_body(masked_data);
-                    co_return co_await net::async_send(conn.socket_, std::span{masked_data.data(), tmp_size});
-                    remaining_size -= tmp_size;
+                    size_t tx_size = co_await net::async_send(conn.socket_, std::span{masked_data.data(), tmp_size});
+                    remaining_size -= tx_size;
+                    spdlog::debug("sent: {} bytes ({}/{})", tx_size, data.size() - remaining_size, data.size());
                 }
+                co_return data.size();
             } else {
                 co_await h.send(conn.socket_);
                 co_return co_await net::async_send(conn.socket_, data);
@@ -156,6 +171,10 @@ namespace g6::ws {
         }
 
         task<message<is_server, Socket>> await() { co_return message<is_server, Socket>{*this}; }
+
+        friend bool tag_invoke(tag_t<net::has_pending_data>, connection &self) {
+            return self.status_ == status_code::undefined;
+        }
 
     protected:
         explicit connection(Socket &&socket, net::ip_endpoint const &remote_endpoint,
