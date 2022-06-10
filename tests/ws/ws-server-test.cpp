@@ -32,10 +32,14 @@ TEST_CASE("ws simple server", "[g6::web::ws]") {
                     auto message = co_await net::async_recv(session);
                     while (net::has_pending_data(message)) {
                         std::array<std::byte, 256> data;
-                        size_t sz = co_await net::async_recv(message, data);
-                        auto sv_body = std::string_view{reinterpret_cast<const char *>(data.data()), sz};
-                        spdlog::info("body: {}", sv_body);
-                        REQUIRE(sv_body == "Hello !");
+                        auto sz = co_await net::async_recv(message, data);
+                        if (sz) {
+                            auto sv_body = std::string_view{reinterpret_cast<const char *>(data.data()), *sz};
+                            spdlog::info("body: {}", sv_body);
+                            REQUIRE(sv_body == "Hello !");
+                        } else {
+                            spdlog::info("closed: {}", to_string(sz.error()));
+                        }
                     }
                     co_await net::async_send(session, as_bytes(std::span{"OK !", 4}));
                 };
@@ -48,8 +52,8 @@ TEST_CASE("ws simple server", "[g6::web::ws]") {
             std::string body_str;
             while (net::has_pending_data(message)) {
                 std::array<std::byte, 256> data;
-                size_t sz = co_await net::async_recv(message, data);
-                auto body_sv = std::string_view{reinterpret_cast<const char *>(data.data()), sz};
+                auto sz = co_await net::async_recv(message, data);
+                auto body_sv = std::string_view{reinterpret_cast<const char *>(data.data()), *sz};
                 body_str += body_sv;
             }
             spdlog::info("body: {}", body_str);
