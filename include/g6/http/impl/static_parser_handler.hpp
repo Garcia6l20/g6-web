@@ -88,9 +88,7 @@ namespace g6::http::detail {
         }
 
         [[nodiscard]] bool header_done() const noexcept { return state_ >= parser_status::on_headers_complete; }
-        [[nodiscard]] bool has_body() const noexcept { return body_.size(); }
-        [[nodiscard]] auto body() { return std::exchange(body_, {}); }
-        [[nodiscard]] size_t body_size() const { return body_.size(); }
+        [[nodiscard]] auto const&body() { return body_; }
 
     public:
         bool parse(std::span<std::byte const> data) {
@@ -115,7 +113,7 @@ namespace g6::http::detail {
 
         friend bool tag_invoke(tag_t<g6::net::has_pending_data>,
                                g6::http::detail::static_parser_handler<is_request> &sph) noexcept {
-            return (sph.state_ != parser_status::on_message_complete) || (not sph.body_.empty());
+            return sph.state_ != parser_status::on_message_complete;
         }
 
         auto method() const { return static_cast<http::method>(parser_->method); }
@@ -307,6 +305,10 @@ namespace g6::http::detail {
 
         auto execute_parser(const char *data, size_t len) {
             return http_parser_execute(parser_.get(), &http_parser_settings_, data, len);
+        }
+
+        parser_status status() const noexcept {
+            return state_;
         }
 
     private:

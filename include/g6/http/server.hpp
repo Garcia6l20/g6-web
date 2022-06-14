@@ -13,15 +13,6 @@
 #include <spdlog/spdlog.h>
 
 namespace g6 {
-
-    namespace web {
-        class context;
-
-        auto tag_invoke(tag_t<g6::web::make_server>, g6::web::context &, web::proto::http_ const &, net::ip_endpoint);
-        auto tag_invoke(tag_t<g6::web::make_server>, g6::web::context &, web::proto::https_ const &, net::ip_endpoint,
-                        const auto &, const auto &);
-    }// namespace web
-
     namespace http {
 
         template<template<typename> typename Server, typename SocketT, typename RequestHandlerBuilder>
@@ -30,9 +21,8 @@ namespace g6 {
 
         template<typename Socket>
         class server {
-        protected:
             g6::web::context &context_;
-            ff_spawner scope_{};
+        public:
             server(g6::web::context &context, Socket socket) : context_{context}, socket{std::move(socket)} {}
 
         public:
@@ -47,12 +37,6 @@ namespace g6 {
             server(server &&) noexcept = default;
             ~server() = default;
 
-            friend auto g6::web::tag_invoke(tag_t<g6::web::make_server>, g6::web::context &, web::proto::http_ const &,
-                                            net::ip_endpoint);
-
-            friend auto g6::web::tag_invoke(tag_t<g6::web::make_server>, g6::web::context &, web::proto::https_ const &,
-                                            net::ip_endpoint, const auto &, const auto &);
-
             template<template<typename> typename Server, typename SocketT, typename RequestHandlerBuilder>
             friend task<void> tag_invoke(tag_t<g6::web::async_serve>, Server<SocketT> &, std::stop_token,
                                          RequestHandlerBuilder &&);
@@ -61,8 +45,7 @@ namespace g6 {
         template<template<typename> typename Server, typename SocketT, typename RequestHandlerBuilder>
         task<void> tag_invoke(tag_t<g6::web::async_serve>, Server<SocketT> &server, std::stop_token stop_token,
                               RequestHandlerBuilder &&request_handler_builder) {
-
-            auto &scope = server.scope_;
+            ff_spawner scope;
             try {
                 while (not stop_token.stop_requested()) {
                     auto [sock, address] = co_await net::async_accept(server.socket, stop_token);
@@ -80,8 +63,7 @@ namespace g6 {
                         scope.spawn([](auto session, auto request_handler, std::stop_token stop) mutable -> task<void> {
                             try {
                                 while (not stop.stop_requested()) {
-                                    auto request = co_await net::async_recv(session, stop);
-                                    co_await request_handler(session, std::move(request));
+                                    co_await request_handler(session, net::async_recv(session));
                                 }
                             } catch (std::system_error const &error) {
                                 auto ec = error.code();
@@ -109,6 +91,7 @@ namespace g6 {
                     throw;
                 }
             }
+            co_await scope;
         }
 
         template<typename Socket_>
@@ -118,5 +101,22 @@ namespace g6 {
         }
 
     }// namespace http
+
+    namespace web {
+
+        inline http::server<net::async_socket> tag_invoke(tag_t<g6::web::make_server>, g6::web::context &ctx, web::proto::http_ const &,
+                            net::ip_endpoint endpoint) {
+            auto socket = net::open_socket(ctx, net::proto::tcp);
+            socket.bind(endpoint);
+            socket.listen();
+            return http::server{ctx, std::move(socket)};
+        }
+
+        inline http::server<ssl::async_socket> tag_invoke(tag_t<g6::web::make_server>, g6::web::context &ctx, web::proto::https_ const &,
+                            net::ip_endpoint endpoint, const ssl::certificate &cert, const ssl::private_key &key) {
+            auto socket = net::open_socket(ctx, std::move(endpoint), cert, key);
+            return http::server{ctx, std::move(socket)};
+        }
+    }
 
 }// namespace g6

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <g6/http/http.hpp>
-#include <g6/http/impl/static_parser_handler.hpp>
+#include <g6/http/message.hpp>
 
 #include <g6/net/ip_endpoint.hpp>
 #include <g6/net/net_cpo.hpp>
@@ -16,26 +16,16 @@ namespace g6::http {
     template<typename Context, typename Socket>
     class client;
 
-    template<typename Context, typename Socket>
+    template<typename Socket>
     struct client_response;
 
     template<typename Context, typename Socket>
-    inline task<std::span<std::byte>> tag_invoke(tag_t<g6::net::async_recv>, client_response<Context, Socket> &,
-                                                 std::stop_token stop = {});
+    client_response<Socket> tag_invoke(tag_t<g6::net::async_recv>, client<Context, Socket> &);
 
-    template<typename Context, typename Socket>
-    struct client_response : detail::static_parser_handler<false> {
-        Socket &socket_;
-        std::span<std::byte> buffer_;
-        client_response(Socket &socket, std::span<std::byte> &buffer) noexcept : socket_{socket}, buffer_{buffer} {}
-
-        client_response(client_response &&other) noexcept : socket_{other.socket_}, buffer_{other.buffer_} {};
-
-        client_response(client_response const &other) = delete;
-
-        template<typename Context_, typename Socket_>
-        friend task<std::span<std::byte>> tag_invoke(tag_t<g6::net::async_recv>, client_response<Context_, Socket_> &,
-                                                     std::stop_token);
+    template<typename Socket>
+    struct client_response : detail::response_parser<Socket> {
+        template<typename Context>
+        friend client_response<Socket> tag_invoke(tag_t<g6::net::async_recv>, client<Context, Socket> &);
     };
 
     template<typename Context, typename Socket>
@@ -70,31 +60,16 @@ namespace g6::http {
             header_data_ += "\r\n";
         }
 
-        friend task<client_response<Context, Socket>> tag_invoke(tag_t<net::async_send>, client &client,
-                                                                 std::string_view path, http::method method,
-                                                                 std::span<std::byte const> data, http::headers hdrs) {
+        friend client_response<Socket> tag_invoke<>(tag_t<g6::net::async_recv>, client<Context, Socket> &self);
+
+        friend task<client_response<Socket>> tag_invoke(tag_t<net::async_send>, client &client,
+                                                        std::span<std::byte const> data, std::string_view path,
+                                                        http::method method = http::method::get, http::headers hdrs = {}) {
             if (data.size()) { hdrs.emplace("Content-Length", std::to_string(data.size())); }
-            client.build_header(path, method, std::move(hdrs));
-            co_await net::async_send(client.socket,
-                                     as_bytes(std::span{client.header_data_.data(), client.header_data_.size()}));
-            co_await net::async_send(client.socket, data);
-            co_return client_response<Context, Socket>{client.socket, client.buffer_};
-        }
-
-        friend auto tag_invoke(tag_t<net::async_send>, client &client, std::string_view path, http::method method) {
-            static constexpr std::span empty{static_cast<std::byte const *>(nullptr), 0};
-            return net::async_send(client, path, method, empty, http::headers{});
-        }
-
-        friend auto tag_invoke(tag_t<net::async_send>, client &client, std::string_view path, http::method method,
-                               http::headers &&hdrs) {
-            static constexpr std::span empty{static_cast<std::byte const *>(nullptr), 0};
-            return net::async_send(client, path, method, empty, std::forward<http::headers>(hdrs));
-        }
-
-        friend auto tag_invoke(tag_t<net::async_send>, client &client, std::string_view path, http::method method,
-                               std::span<std::byte const> data) {
-            return net::async_send(client, path, method, data, http::headers{});
+            detail::request_builder req{client.socket, method, path, std::move(hdrs)};
+            co_await net::async_send(req); // send http header
+            co_await net::async_send(req, data);
+            co_return net::async_recv(client);
         }
 
     public:
@@ -105,16 +80,8 @@ namespace g6::http {
     };
 
     template<typename Context, typename Socket>
-    task<std::span<std::byte>> tag_invoke(tag_t<g6::net::async_recv>, client_response<Context, Socket> &response,
-                                          std::stop_token stop) {
-        if (response.has_body()) {
-            co_return response.body();
-        } else {
-            size_t bytes = co_await net::async_recv(response.socket_, as_writable_bytes(response.buffer_));
-            if (bytes == 0) { throw std::system_error{std::make_error_code(std::errc::connection_reset)}; }
-            response.parse(as_bytes(std::span{response.buffer_.data(), bytes}));
-            co_return response.body();
-        }
+    client_response<Socket> tag_invoke(tag_t<g6::net::async_recv>, client<Context, Socket> &self) {
+        return {self.socket};
     }
 
 }// namespace g6::http

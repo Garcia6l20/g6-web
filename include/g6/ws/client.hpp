@@ -61,9 +61,8 @@ namespace g6 {
                 {"Sec-WebSocket-Version", std::to_string(ws::client<Context, Socket>::max_ws_version_)},
             };
             auto response = co_await net::async_send(http_client, path, http::method::get, std::move(hdrs));
-            while (net::has_pending_data(response)) {//
-                co_await net::async_recv(response);
-            }
+            std::string body;
+            co_await net::async_recv(response, std::back_inserter(body));
             if (response.status_code() != http::status::switching_protocols) {
                 throw std::system_error(int(response.status_code()), http::error_category, "upgrade_connection");
             }

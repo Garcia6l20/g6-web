@@ -30,6 +30,10 @@ namespace g6::ws {
     task<size_t> tag_invoke(tag_t<net::async_send>, connection<is_server, Socket> &, std::span<std::byte const>);
 
     template<bool is_server, typename Socket>
+    task<message<is_server, Socket>> tag_invoke(tag_t<net::async_recv>, connection<is_server, Socket> &conn,
+                                                        std::stop_token stop);
+                                                        
+    template<bool is_server, typename Socket>
     class message {
         connection<is_server, Socket> &connection_;
 
@@ -42,8 +46,8 @@ namespace g6::ws {
 
         explicit message(connection<is_server, Socket> &conn) noexcept : connection_{conn}, socket_{conn.socket_} {}
 
-        friend task<message<is_server, Socket>> tag_invoke(tag_t<net::async_recv>, connection<is_server, Socket> &conn,
-                                                           std::stop_token stop);
+        friend task<message<is_server, Socket>> tag_invoke<>(tag_t<net::async_recv>, connection<is_server, Socket> &conn,
+                                                             std::stop_token stop);
 
         task<size_t> async_recv(std::span<std::byte> data) {
             ssize_t remaining_size = header_.payload_length - current_payload_offset_;
@@ -119,22 +123,6 @@ namespace g6::ws {
         constexpr bool operator==(connection const &other) const noexcept { return socket_ == other.socket_; }
         constexpr auto operator<=>(connection const &) const noexcept = default;
 
-        task<> async_close(status_code reason = status_code::normal_closure) {
-            uint16_t status = uint16_t(reason);
-            header h{
-                .fin = true,
-                .opcode = op_code::connection_close,
-                .mask = not is_server,
-                .payload_length = sizeof(status),
-            };
-            if constexpr (not is_server) { h.masking_key = make_masking_key(); }
-            co_await h.send(socket_);
-            // status
-            status = std::byteswap(status);
-            h.mask_body(as_writable_bytes(std::span{&status, 1}));
-            co_await net::async_send(socket_, std::span{&status, 1});
-        }
-
         auto status() const noexcept { return status_; }
 
     private:
@@ -168,6 +156,23 @@ namespace g6::ws {
                 co_await h.send(conn.socket_);
                 co_return co_await net::async_send(conn.socket_, data);
             }
+        }
+
+        friend task<> tag_invoke(tag_t<net::async_close>, connection& self, status_code reason = status_code::normal_closure) {            
+            uint16_t status = uint16_t(reason);
+            header h{
+                .fin = true,
+                .opcode = op_code::connection_close,
+                .mask = not is_server,
+                .payload_length = sizeof(status),
+            };
+            if constexpr (not is_server) { h.masking_key = self.make_masking_key(); }
+            co_await h.send(self.socket_);
+            // status
+            status = std::byteswap(status);
+            h.mask_body(as_writable_bytes(std::span{&status, 1}));
+            co_await net::async_send(self.socket_, std::span{&status, 1});
+            self.status_ = reason;
         }
 
         task<message<is_server, Socket>> await() { co_return message<is_server, Socket>{*this}; }

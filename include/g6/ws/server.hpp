@@ -9,14 +9,9 @@
 
 namespace g6 {
 
-    namespace web {
-        auto tag_invoke(tag_t<make_server>, g6::web::context &ctx, web::proto::ws_ const &, net::ip_endpoint endpoint);
-    }
-
     namespace ws {
         template<typename Socket>
-        class server_session : public connection<true, Socket>
-        {
+        class server_session : public connection<true, Socket> {
         public:
             explicit server_session(Socket &&socket, net::ip_endpoint const &endpoint,
                                     uint32_t version = connection<true, Socket>::max_ws_version_) noexcept
@@ -24,17 +19,11 @@ namespace g6 {
         };
 
         template<typename Socket>
-        class server : public g6::http::server<Socket>
-        {
+        class server : public g6::http::server<Socket> {
         public:
             static constexpr auto proto = web::proto::ws;
-
-        private:
             server(g6::web::context &context, Socket socket) noexcept
                 : g6::http::server<Socket>{context, std::move(socket)} {}
-
-            friend auto web::tag_invoke(tag_t<web::make_server>, g6::web::context &ctx, web::proto::ws_ const &,
-                                        net::ip_endpoint endpoint);
         };
     }// namespace ws
 
@@ -43,15 +32,16 @@ namespace g6 {
         template<typename Socket>
         task<ws::server_session<Socket>> tag_invoke(tag_t<web::upgrade_connection>, web::proto::ws_,
                                                     http::server_session<Socket> &http_session) {
-            auto request = co_await net::async_recv(http_session);
-            co_return co_await web::upgrade_connection(web::proto::ws, http_session, request);
+            auto req = net::async_recv(http_session);
+            co_return co_await web::upgrade_connection(web::proto::ws, http_session, req);
         }
 
         template<typename Socket>
         task<ws::server_session<Socket>> tag_invoke(tag_t<web::upgrade_connection>, web::proto::ws_,
                                                     http::server_session<Socket> &http_session,
                                                     http::server_request<Socket> &request) {
-            while (net::has_pending_data(request)) { co_await net::async_recv(request); }
+            std::string body;
+            co_await net::async_recv(request, std::back_inserter(body));
 #ifdef G6_WEB_DEBUG
             for (auto &h : request.headers()) { spdlog::debug("{} -> {}", h.first, h.second); }
 #endif
@@ -78,12 +68,27 @@ namespace g6 {
             http::headers hdrs{{"Upgrade", "websocket"},
                                {"Connection", "Upgrade"},
                                {"Sec-WebSocket-Accept", std::move(accept)}};
-            std::string_view dumb{};
-            co_await net::async_send(http_session, http::status::switching_protocols, std::move(hdrs),
-                                     as_bytes(std::span{dumb.data(), dumb.size()}));
+            co_await net::async_send(http_session, http::status::switching_protocols, std::move(hdrs));
             co_return ws::server_session<Socket>{std::move(web::get_socket(http_session)),
                                                  http_session.remote_endpoint(), ws_version};
         }
     }// namespace http
+
+    namespace web {
+        inline ws::server<net::async_socket> tag_invoke(tag_t<g6::web::make_server>, g6::web::context &ctx,
+                                                        web::proto::ws_ const &, net::ip_endpoint endpoint) {
+            auto socket = net::open_socket(ctx, net::proto::tcp);
+            socket.bind(endpoint);
+            socket.listen();
+            return {ctx, std::move(socket)};
+        }
+
+        inline ws::server<ssl::async_socket> tag_invoke(tag_t<g6::web::make_server>, g6::web::context &ctx,
+                                                        web::proto::wss_ const &, net::ip_endpoint endpoint,
+                                                        const ssl::certificate &cert, const ssl::private_key &key) {
+            auto socket = net::open_socket(ctx, std::move(endpoint), cert, key);
+            return {ctx, std::move(socket)};
+        }
+    }// namespace web
 
 }// namespace g6

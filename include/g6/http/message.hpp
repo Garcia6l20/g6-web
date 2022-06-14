@@ -1,16 +1,17 @@
 /**
- * @file cppcoro/http/htt_message.hpp
+ * @file g6/http/message.hpp
  * @author Garcia Sylvain <garcia.6l20@gmail.com>
  */
 #pragma once
 
-#include <cppcoro/detail/is_specialization.hpp>
-#include <cppcoro/http/details/static_parser_handler.hpp>
+#include <g6/http/impl/static_parser_handler.hpp>
 
 #include <fmt/format.h>
 #include <span>
 
-namespace cppcoro::http {
+namespace g6::http {
+
+#if 0
     namespace detail {
         enum
         {
@@ -37,6 +38,22 @@ namespace cppcoro::http {
 
             http::headers headers;
             byte_span body;
+
+            template <size_t extent>
+            friend task<size_t> tag_invoke(tag_t<net::async_recv>, server_request &request, std::span<std::byte, extent> data, std::stop_token stop = {}) {
+                size_t body_sz = request.body().size();
+                if (body_sz > body_offset_) {
+                    size_t copy_sz = std::min(data.size(), request.body().size());
+                    std::memcpy(data.data(), request.body().data(), copy_sz);
+                    body_offset_ += copy_sz;
+                    co_return copy_sz;
+                } else {
+                    size_t bytes = co_await net::async_recv(request.socket_, data);
+                    if (bytes == 0) { throw std::system_error{std::make_error_code(std::errc::connection_reset)}; }
+                    request.parse(data);
+                    co_return request.body();
+                }
+            }
 
             //			virtual bool is_chunked() = 0;
             //			virtual std::string build_header() = 0;
@@ -112,69 +129,6 @@ namespace cppcoro::http {
                 return *this;
             }
 
-            //            explicit abstract_message(base_type &&base) noexcept :
-            //            base_type(std::move(base))  {} abstract_message& operator=(base_type
-            //            &&base) noexcept {
-            //                static_cast<base_type>(*this) = std::move(base);
-            //            }
-            //
-            //			bool is_chunked() final
-            //			{
-            //				if constexpr (ro_chunked_body<body_type> or wo_chunked_body<body_type>)
-            //				{
-            //					return true;
-            //				}
-            //				else
-            //				{
-            //					return false;
-            //				}
-            //			}
-
-            //			task<std::span<std::byte, std::dynamic_extent>> read_body(size_t max_size =
-            //max_body_size) final
-            //			{
-            //				if constexpr (ro_basic_body<BodyT>)
-            //				{
-            //					co_return std::span{ body_access };
-            //				}
-            //				else if constexpr (ro_chunked_body<BodyT>)
-            //				{
-            //					if (not chunk_generator_)
-            //					{
-            //						chunk_generator_ = body_access.read(max_size);
-            //						chunk_generator_it_ = co_await chunk_generator_->begin();
-            //						if (*chunk_generator_it_ != chunk_generator_->end())
-            //						{
-            //							co_return** chunk_generator_it_;
-            //						}
-            //					}
-            //					else if (
-            //						chunk_generator_it_ and
-            //						co_await ++*chunk_generator_it_ != chunk_generator_->end())
-            //					{
-            //						co_return** chunk_generator_it_;
-            //					}
-            //					co_return {};
-            //				}
-            //			}
-
-            //			task<size_t> write_body(std::span<std::byte, std::dynamic_extent> data)
-            //final
-            //			{
-            //				if constexpr (wo_basic_body<BodyT>)
-            //				{
-            //					auto size =
-            //						std::min(data.size(),
-            //std::as_writable_bytes(this->body_access).size()); 					std::memmove(
-            //						std::as_writable_bytes(this->body_access).data(), data.data(),
-            //size); 					co_return size;
-            //				}
-            //				else if constexpr (wo_chunked_body<BodyT>)
-            //				{
-            //					co_return co_await this->body_access.write(data);
-            //				}
-            //			}
-
             inline std::string build_header() {
                 for (auto &[k, v] : this->headers) { spdlog::debug("- {}: {}", k, v); }
                 std::string output = _header_base();
@@ -210,32 +164,108 @@ namespace cppcoro::http {
                 }
             }
         };
+    }// namespace detail
+#endif
 
-        template<bool response, typename T>
-        struct abstract_span_message : detail::abstract_message<response, T> {
-            abstract_span_message(auto status_or_method, T span, http::headers &&headers = {}) noexcept
-                : detail::abstract_message<response, T>{status_or_method} {
-                this->body = std::as_writable_bytes(span);
+    namespace detail {
+
+        template<typename Super>
+        struct message_builder_base {
+
+
+        private:
+            auto &super() { return *static_cast<Super *>(this); }
+            auto const &super() const { return *static_cast<Super const *>(this); }
+
+            // send header
+            friend task<size_t> tag_invoke(tag_t<net::async_send>, message_builder_base &self) {
+                std::string header = self._header_base();
+                for (const auto &[field, value] : self.super().headers) {
+                    format_to(std::back_inserter(header), "{}: {}\r\n", field, value);
+                }
+                header += "\r\n";
+                self.header_sent_ = true;
+                co_return co_await net::async_send(self.super().socket, header);
+            }
+
+            // send data
+            template<size_t extent>
+            friend auto tag_invoke(tag_t<net::async_send>, message_builder_base &self,
+                                           std::span<std::byte const, extent> data) {
+                return net::async_send(self.super().socket, data);
+            }
+
+        protected:
+            inline std::string _header_base() const {
+                if constexpr (Super::is_request) {
+                    return format("{} {} HTTP/1.1\r\n"
+                                  "UserAgent: g6-http/0.0\r\n",
+                                  to_string(super().method), super().path);
+                } else {
+                    return format("HTTP/1.1 {} {}\r\n"
+                                  "UserAgent: g6-http/0.0\r\n",
+                                  int(super().status), to_string(super().status));
+                }
+            }
+
+            bool header_sent_ = false;
+        };
+
+        template<typename Socket>
+        struct request_builder : message_builder_base<request_builder<Socket>> {
+            static constexpr bool is_request = true;
+            Socket &socket;
+            http::method method;
+            std::string path;
+            http::headers headers;
+            request_builder(Socket &socket_, http::method method_, std::string_view path_,
+                            http::headers headers_) noexcept
+                : socket{socket_}, method{method_}, path{path_}, headers{std::move(headers_)} {}
+        };
+
+        template<typename Socket>
+        struct response_builder : message_builder_base<request_builder<Socket>> {
+            static constexpr bool is_request = false;
+            Socket &socket;
+            http::status status;
+            http::headers headers;
+        };
+
+
+        template<typename Socket, bool is_request>
+        struct parser_base : detail::static_parser_handler<is_request> {
+
+            Socket &socket_;
+
+            parser_base(Socket &sock) noexcept : socket_{sock} {}
+            parser_base(parser_base const &) = delete;
+            parser_base(parser_base &&other) noexcept
+                : detail::static_parser_handler<is_request>{std::move(other)}, socket_{other.socket_} {}
+
+            template<size_t extent>
+            friend task<size_t> tag_invoke(tag_t<net::async_recv>, parser_base &self, std::span<std::byte, extent> data,
+                                           std::stop_token stop = {}) {
+                size_t bytes_received;
+                do {
+                    size_t bytes_received = co_await net::async_recv(self.socket_, data);
+                    if (bytes_received == 0) {//
+                        throw std::system_error{std::make_error_code(std::errc::connection_reset)};
+                    }
+                    self.parse(std::span{data.data(), bytes_received});
+                } while (self.status() < parser_base::parser_status::on_body);
+                if (not self.body().empty()) {
+                    // move body to begining of data
+                    std::memmove(data.data(), self.body().data(), self.body().size());
+                }
+                co_return self.body().size();
             }
         };
 
+        template<typename Socket>
+        using request_parser = detail::parser_base<Socket, true>;
+
+        template<typename Socket>
+        using response_parser = detail::parser_base<Socket, false>;
     }// namespace detail
 
-
-    template<detail::is_body BodyT>
-    using abstract_request = detail::abstract_message<false, BodyT>;
-
-    template<detail::is_body BodyT>
-    using abstract_response = detail::abstract_message<true, BodyT>;
-
-    template<detail::is_body BodyT>
-    using abstract_request = detail::abstract_message<false, BodyT>;
-
-    struct request_parser : detail::static_parser_handler<true> {
-        using detail::static_parser_handler<true>::static_parser_handler;
-    };
-
-    struct response_parser : detail::static_parser_handler<false> {
-        using detail::static_parser_handler<false>::static_parser_handler;
-    };
-}// namespace cppcoro::http
+}// namespace g6::http

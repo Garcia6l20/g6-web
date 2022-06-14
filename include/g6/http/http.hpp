@@ -76,6 +76,9 @@ namespace g6::http {
         G6_HTTP_STATUS_MAP(XX)
 #undef XX
     };
+    const char* to_string(status s) noexcept {
+        return http::detail::http_status_str(http::detail::http_status(s));
+    }
 
 /* Request Methods */
 #define G6_HTTP_METHOD_MAP(XX)                                                                                         \
@@ -128,6 +131,9 @@ namespace g6::http {
         G6_HTTP_METHOD_MAP(XX)
 #undef XX
     };
+    const char* to_string(method m) noexcept {
+        return http::detail::http_method_str(http::detail::http_method(m));
+    }
 
     using headers = std::multimap<std::string, std::string>;
 

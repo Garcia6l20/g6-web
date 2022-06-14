@@ -1,6 +1,6 @@
 #pragma once
 
-#include <g6/http/impl/static_parser_handler.hpp>
+#include <g6/http/message.hpp>
 
 #include <g6/net/ip_endpoint.hpp>
 #include <g6/net/net_cpo.hpp>
@@ -57,27 +57,17 @@ namespace g6::http {
     using session_buffer = std::array<char, 1024>;
 
     template<typename Socket>
-    struct server_request : detail::static_parser_handler<true> {
-        Socket &socket_;
-        session_buffer &buffer_;
-        server_request(Socket &socket, session_buffer &buffer) noexcept : socket_{socket}, buffer_{buffer} {}
+    class server_session;
 
-        server_request(server_request &&other) noexcept
-            : detail::static_parser_handler<true>{std::forward<server_request>(other)}, socket_{other.socket_},
-              buffer_{other.buffer_} {};
+    template<typename Socket>
+    class server_request;
 
-        server_request(server_request const &other) = delete;
+    template<typename Socket>
+    server_request<Socket> tag_invoke(tag_t<net::async_recv>, server_session<Socket> &session);
 
-        friend task<std::span<std::byte const>> tag_invoke(tag_t<net::async_recv>, server_request &request) {
-            if (request.has_body()) {
-                co_return request.body();
-            } else {
-                size_t bytes = co_await net::async_recv(request.socket_, as_writable_bytes(std::span{request.buffer_}));
-                if (bytes == 0) { throw std::system_error{std::make_error_code(std::errc::connection_reset)}; }
-                request.parse(as_bytes(std::span{request.buffer_.data(), bytes}));
-                co_return request.body();
-            }
-        }
+    template<typename Socket>
+    class server_request : public detail::request_parser<Socket> {
+        friend server_request<Socket> tag_invoke<>(tag_t<net::async_recv>, server_session<Socket> &session);
     };
 
     template<typename Socket>
@@ -114,34 +104,15 @@ namespace g6::http {
 
         friend auto &tag_invoke(tag_t<web::get_socket>, server_session &session) noexcept { return session.socket; }
 
-        friend task<server_request<Socket>> tag_invoke(tag_t<net::async_recv>, server_session &session,
-                                                       std::stop_token stop = {}) {
-            size_t bytes = co_await net::async_recv(
-                session.socket, as_writable_bytes(std::span{session.buffer_.data(), session.buffer_.size()}), stop);
-            if (bytes == 0) { throw std::system_error{std::make_error_code(std::errc::connection_reset)}; }
-            server_request req{session.socket, session.buffer_};
-            req.parse(as_bytes(std::span{session.buffer_.data(), bytes}));
-            co_return req;
-        }
+        friend server_request<Socket> tag_invoke<>(tag_t<net::async_recv>, server_session<Socket> &session);
 
-        template<typename T, size_t extent>
-        friend task<size_t> tag_invoke(tag_t<net::async_send>, server_session &session, http::status status,
-                                       http::headers hdrs, std::span<T, extent> data) {
-            if (data.size()) { hdrs.emplace("Content-Length", std::to_string(data.size())); }
-            session.build_header(status, std::move(hdrs));
+        template<size_t extent>
+        friend task<size_t> tag_invoke(tag_t<net::async_send> const &tag_t, server_session &session,
+                               std::span<std::byte const, extent> data, http::status status = http::status::ok, http::headers headers = {}) {
+            if (data.size()) { headers.emplace("Content-Length", std::to_string(data.size())); }
+            session.build_header(status, std::move(headers));
             co_await net::async_send(session.socket, session.header_data_);
             co_return co_await net::async_send(session.socket, data);
-        }
-
-        template<typename T, size_t extent>
-        friend auto tag_invoke(tag_t<net::async_send> const &tag_t, server_session &session, http::status status,
-                               std::span<T, extent> data) {
-            return net::async_send(session, status, http::headers{}, data);
-        }
-
-        friend auto tag_invoke(tag_t<net::async_send> const &tag_t, server_session &session, http::status status) {
-            return net::async_send(session, status, http::headers{},
-                                   std::span{static_cast<const std::byte *>(nullptr), 0});
         }
 
         friend task<server_response<Socket>> tag_invoke(tag_t<net::async_send>, server_session &session,
@@ -151,5 +122,10 @@ namespace g6::http {
             co_return server_response{session.socket};
         }
     };
+
+    template<typename Socket>
+    server_request<Socket> tag_invoke(tag_t<net::async_recv>, server_session<Socket> &session) {
+        return {session.socket};
+    }
 
 }// namespace g6::http

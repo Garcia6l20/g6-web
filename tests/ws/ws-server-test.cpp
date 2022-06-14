@@ -115,7 +115,7 @@ TEST_CASE("ws simple server: segmented", "[g6::web::ws]") {
             auto response = co_await net::async_recv(session);
             std::string rx_body;
             co_await net::async_recv(response, std::back_inserter(rx_body));
-            co_await session.async_close();
+            co_await net::async_close(session);
             spdlog::info("client rx body: {}", rx_body);
             REQUIRE(rx_body == tx_body);
         }(),
