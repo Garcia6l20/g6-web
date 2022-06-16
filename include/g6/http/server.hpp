@@ -13,7 +13,10 @@
 #include <spdlog/spdlog.h>
 
 namespace g6 {
-    namespace http {
+    namespace web {
+        class context;
+    }
+    namespace http {        
 
         template<template<typename> typename Server, typename SocketT, typename RequestHandlerBuilder>
         task<void> tag_invoke(tag_t<g6::web::async_serve>, Server<SocketT> &, std::stop_token,

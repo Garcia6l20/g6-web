@@ -30,8 +30,6 @@ namespace g6::http {
 
     template<typename Context, typename Socket>
     class client {
-        using client_buffer = std::array<std::byte, 1024>;
-
     public:
         Socket socket;
 
@@ -44,32 +42,25 @@ namespace g6::http {
     protected:
         Context &context_;
         net::ip_endpoint remote_endpoint_;
-        client_buffer buffer_data_{};
-        std::span<std::byte> buffer_{buffer_data_.data(), buffer_data_.size()};
-        std::string header_data_;
 
         friend auto &tag_invoke(tag_t<web::get_context>, client &client) { return client.context_; }
         friend auto &tag_invoke(tag_t<web::get_socket>, client &client) { return client.socket; }
-
-        void build_header(std::string_view path, http::method method, http::headers &&headers) noexcept {
-            header_data_ = fmt::format("{} {} HTTP/1.1\r\n"
-                                       "UserAgent: g6-http/0.0\r\n",
-                                       detail::http_method_str(static_cast<detail::http_method>(method)), path);
-
-            for (auto &[field, value] : headers) { header_data_ += fmt::format("{}: {}\r\n", field, value); }
-            header_data_ += "\r\n";
-        }
 
         friend client_response<Socket> tag_invoke<>(tag_t<g6::net::async_recv>, client<Context, Socket> &self);
 
         friend task<client_response<Socket>> tag_invoke(tag_t<net::async_send>, client &client,
                                                         std::span<std::byte const> data, std::string_view path,
                                                         http::method method = http::method::get, http::headers hdrs = {}) {
-            if (data.size()) { hdrs.emplace("Content-Length", std::to_string(data.size())); }
-            detail::request_builder req{client.socket, method, path, std::move(hdrs)};
-            co_await net::async_send(req); // send http header
-            co_await net::async_send(req, data);
+            detail::basic_request req{client.socket, data, method, path, std::move(hdrs)};
+            co_await net::async_send(req);
             co_return net::async_recv(client);
+        }
+
+        friend task<detail::chunked_request<Socket>> tag_invoke(tag_t<web::async_message>, client &client, std::string_view path,
+                                                        http::method method = http::method::get, http::headers hdrs = {}) {
+            detail::chunked_request<Socket> req{client.socket, method, path, std::move(hdrs)};
+            co_await net::async_send(req); // send http header
+            co_return std::move(req);
         }
 
     public:

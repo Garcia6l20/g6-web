@@ -36,6 +36,7 @@ FetchContent_Declare(_fetch_http_parser
   CONFIGURE_COMMAND ""
   INSTALL_COMMAND ""
   BUILD_COMMAND ""
+  UPDATE_DISCONNECTED ON
   )
 FetchContent_MakeAvailable(_fetch_http_parser)
 FetchContent_GetProperties(_fetch_http_parser)
