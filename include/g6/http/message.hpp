@@ -147,8 +147,10 @@ namespace g6::http {
             }
             chunked_message(chunked_message const &) = delete;
             chunked_message(chunked_message &&other) noexcept: message_base<is_request, Socket>{std::move(other)}, closed{std::exchange(other.closed, true)} {}
-            ~chunked_message() noexcept {
-                assert(closed);
+
+            chunked_message &operator=(chunked_message const &) = delete;
+            chunked_message &operator=(chunked_message &&other) noexcept {
+                closed = std::exchange(other.closed, true);
             }
 
             // send header
@@ -164,7 +166,7 @@ namespace g6::http {
                 if (!self.header_sent_) {
                     co_await self.send_header();
                 }
-                co_await net::async_send(self.socket, format("{}\r\n", buffer.size()));
+                co_await net::async_send(self.socket, format("{:x}\r\n", buffer.size()));
                 size_t sent_bytes = co_await net::async_send(self.socket, buffer);
                 co_await net::async_send(self.socket, std::string_view{"\r\n"});
                 co_return sent_bytes;
