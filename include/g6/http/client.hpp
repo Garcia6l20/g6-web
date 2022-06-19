@@ -63,6 +63,27 @@ namespace g6::http {
             co_return std::move(req);
         }
 
+        template <typename Job>
+        friend task<detail::response_parser<Socket>> tag_invoke(tag_t<web::async_message>, client &client, std::string_view path,
+                                                        http::method method, http::headers hdrs, Job &&job) {
+            detail::chunked_request<Socket> req{client.socket, method, path, std::move(hdrs)};
+            co_await net::async_send(req); // send http header
+            co_await job(req);
+            co_return co_await net::async_close(req);
+        }
+
+        template <typename Job>
+        friend auto tag_invoke(tag_t<web::async_message>, client &client, std::string_view path,
+                                                        http::method method, Job &&job) {
+            return web::async_message(client, path, method, http::headers{}, std::forward<Job>(job));
+        }
+
+        template <typename Job>
+        friend auto tag_invoke(tag_t<web::async_message>, client &client, std::string_view path,
+                                                        Job &&job) {
+            return web::async_message(client, path, http::method::get, http::headers{}, std::forward<Job>(job));
+        }
+
     public:
         client(client &&other) noexcept
             : context_{other.context_}, socket{std::move(other.socket)}, remote_endpoint_{

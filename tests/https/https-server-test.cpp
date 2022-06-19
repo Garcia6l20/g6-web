@@ -38,13 +38,9 @@ TEST_CASE("https simple server", "[g6::web::https]") {
         [&]() -> task<void> {
             co_await web::async_serve(server, stop_source.get_token(), [&] {
                 return [&]<typename Session, typename Request>(Session &session, Request request) -> task<void> {
-                    while (net::has_pending_data(request)) {
-                        auto body = co_await net::async_recv(request);
-                        auto sv_body = std::string_view{reinterpret_cast<const char *>(body.data()), body.size()};
-                        spdlog::info("body: {}", sv_body);
-                        REQUIRE(sv_body == "Hello !");
-                    }
-                    co_await net::async_send(session, http::status::ok, as_bytes(std::span{"OK !", 4}));
+                    std::string body;
+                    co_await net::async_recv(request, std::back_inserter(body));
+                    co_await net::async_send(session, std::string_view{"OK !"}, http::status::ok);
                 };
             });
         }(),
@@ -53,16 +49,13 @@ TEST_CASE("https simple server", "[g6::web::https]") {
             auto session = co_await net::async_connect(ctx, web::proto::https, server_endpoint,
                                                        ssl::verify_flags::allow_untrusted);
             auto response =
-                co_await net::async_send(session, "/", http::method::post, as_bytes(std::span{"Hello !", 7}));
+                co_await net::async_send(session, std::string_view{"Hello !"}, "/", http::method::post);
 
-            std::string body_str;
-            while (net::has_pending_data(response)) {
-                auto body = co_await net::async_recv(response);
-                body_str += std::string_view{reinterpret_cast<char *>(body.data()), body.size()};
-                spdlog::info("body: {}", body_str);
-            }
+            std::string body;
+            co_await net::async_recv(response, std::back_inserter(body));
+            spdlog::info("body: {}", body);
             REQUIRE(response.status_code() == http::status::ok);
-            REQUIRE(body_str == "OK !");
+            REQUIRE(body == "OK !");
         }(),
         async_exec(ctx, stop_source.get_token()));
 }

@@ -53,15 +53,32 @@ namespace g6::http {
 
         template<size_t extent>
         friend task<size_t> tag_invoke(tag_t<net::async_send> const &tag_t, server_session &session,
-                               std::span<std::byte const, extent> data, http::status status = http::status::ok, http::headers headers = {}) {
+                                       std::span<std::byte const, extent> data, http::status status = http::status::ok,
+                                       http::headers headers = {}) {
             detail::basic_response resp{session.socket, data, status, std::move(headers)};
             co_return co_await net::async_send(resp);
         }
 
-        friend task<detail::chunked_response<Socket>> tag_invoke(tag_t<web::async_message>, server_session &session, http::status status = http::status::ok, http::headers headers = {}) {
+        friend task<detail::chunked_response<Socket>> tag_invoke(tag_t<web::async_message>, server_session &session,
+                                                                 http::status status = http::status::ok,
+                                                                 http::headers headers = {}) {
             detail::chunked_response<Socket> resp{session.socket, status, std::move(headers)};
-            co_await net::async_send(resp); // send http header
+            co_await net::async_send(resp);// send http header
             co_return std::move(resp);
+        }
+
+        template<typename Job>
+        friend task<> tag_invoke(tag_t<web::async_message>, server_session &session, http::status status,
+                                 http::headers headers, Job &&job) {
+            detail::chunked_response<Socket> resp{session.socket, status, std::move(headers)};
+            co_await net::async_send(resp);// send http header
+            co_await job(resp);
+            co_return co_await net::async_close(resp);
+        }
+
+        template<typename Job>
+        friend auto tag_invoke(tag_t<web::async_message>, server_session &session, http::status status, Job &&job) {
+            return web::async_message(session, status, http::headers{}, std::forward<Job>(job));
         }
     };
 

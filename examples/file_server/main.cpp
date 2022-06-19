@@ -2,10 +2,9 @@
 
 #include <g6/tmp.hpp>
 
-// #include <g6/http/client.hpp>
+#include <g6/web/context.hpp>
 #include <g6/http/router.hpp>
 #include <g6/http/server.hpp>
-#include <g6/web/context.hpp>
 
 #include <g6/coro/sync_wait.hpp>
 
@@ -136,38 +135,38 @@ int main(int argc, char **argv) {
                     auto page =
                         temp("title"_kw = "G6 fileserver", "path"_kw = path, "breadcrumb"_kw = make_breadcrumb(path),
                              "directories"_kw = dirs, "files"_kw = files);
-                    co_await net::async_send(*session, http::status::ok, as_bytes(std::span{page.data(), page.size()}));
+                    co_await net::async_send(*session, page);
                 } catch (std::exception const &error) { opt_error = error.what(); }
                 if (opt_error) {
-                    co_await net::async_send(*session, http::status::internal_server_error,
-                                             std::as_bytes(std::span{opt_error->data(), opt_error->size()}));
+                    co_await net::async_send(*session, opt_error.value(), http::status::internal_server_error);
                 }
             } else if (fs::exists(root_path / path)) {
                 spdlog::info("opening: {}", (root_path / path).string());
                 auto file =
                     open_file(context, root_path / path, g6::open_file_mode::existing | g6::open_file_mode::read);
-                http::headers headers{{"Transfer-Encoding", "chunked"}};
-                auto stream = co_await net::async_send(*session, http::status::ok, std::move(headers));
-                std::array<char, 1024> data{};
-                size_t offset = 0;
-                while (size_t bytes = co_await async_read_some(file, as_writable_bytes(std::span{data}))) {
-                    offset += bytes;
-                    co_await net::async_send(stream, as_bytes(std::span{data.data(), bytes}));
-                }
-                co_await net::async_send(stream);// close stream
+                co_await web::async_message(*session, http::status::ok, [&file](auto &message) -> task<> {
+                    std::array<char, 1024> data{};
+                    size_t offset = 0;
+                    const size_t total = file.size();
+                    while (offset < total) {
+                        size_t bytes = co_await async_read_some(file, as_writable_bytes(std::span{data}));
+                        co_await net::async_send(message, std::span{data.data(), bytes});
+                        offset += bytes;
+                        spdlog::info("sent: {}/{} bytes", offset, total);
+                    }
+                    spdlog::info("file transferred");
+                });
             } else {
                 auto err_page =
                     fmt::format(R"(<div><h6>Not found</h6><p>No such file or directory: {}</p></div>)", path);
-                co_await net::async_send(*session, http::status::not_found,
-                                         std::as_bytes(std::span{err_page.data(), err_page.size()}));
+                co_await net::async_send(*session, err_page, http::status::not_found);
             }
         }),
         router::on<R"(.*)">([](router::context<http::server_session<net::async_socket>> session,
                                router::context<http::server_request<net::async_socket>> request) -> task<void> {
-            // spdlog::info("unhandled: {} {}", request->url(), request->method());
+            spdlog::info("unhandled url: {}", request->url());
             constexpr std::string_view not_found = R"(<div><h6>Not found</h6></div>)";
-            co_await net::async_send(*session, http::status::not_found,
-                                     as_bytes(std::span{not_found.data(), not_found.size()}));
+            co_await net::async_send(*session, not_found, http::status::not_found);
         })};
     sync_wait(
         [&]() -> task<void> {
@@ -175,11 +174,11 @@ int main(int argc, char **argv) {
             co_await web::async_serve(server, g_stop_source.get_token(), [&] {
                 return [root_path, &router, &context]<typename Session, typename Request>(
                            Session &session, Request request) mutable -> task<void> {
-                    spdlog::info("{}", request.url());
+                    std::string body;
+                    co_await net::async_recv(request, std::back_inserter(body));// flush unused body
+
+                    spdlog::info("url: {}", request.url());
                     co_await router(request.url(), request.method(), std::ref(request), std::ref(session));
-                    while (net::has_pending_data(request)) {
-                        co_await net::async_recv(request);// flush unused body
-                    }
                     spdlog::info("done");
                 };
             });
