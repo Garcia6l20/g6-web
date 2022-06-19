@@ -2,9 +2,9 @@
 
 #include <g6/json/json.hpp>
 
+#include <g6/web/context.hpp>
 #include <g6/http/router.hpp>
 #include <g6/http/server.hpp>
-#include <g6/web/context.hpp>
 #include <g6/ws/server.hpp>
 
 #include <g6/coro/sync_wait.hpp>
@@ -81,36 +81,31 @@ int main(int argc, char **argv) {
                                      router::context<user_session> us) -> task<void> {
             if (!us->logged) {
                 http::headers hdrs{{"Location", "/login"}};// gcc bug ???
-                auto stream = co_await net::async_send(*session, http::status::temporary_redirect, std::move(hdrs));
-                co_await net::async_send(stream);
+                co_await net::async_send(*session, http::status::temporary_redirect, std::move(hdrs));
             } else {
                 auto page =
                     fmt::vformat(html::index, fmt::make_format_args(fmt::arg("address", server_endpoint.address()),
                                                                     fmt::arg("port", server_endpoint.port()),
                                                                     fmt::arg("js_main", js::main)));
-                co_await net::async_send(*session, http::status::ok,
-                                         std::as_bytes(std::span{page.data(), page.size()}));
+                co_await net::async_send(*session, page, http::status::ok);
             }
         }),
         http::route::get<R"(/login)">(
             [&](router::context<http::server_session<net::async_socket>> session,
                 router::context<http::server_request<net::async_socket>> request) -> task<void> {
-                co_await net::async_send(*session, http::status::ok,
-                                         std::as_bytes(std::span{html::login.data(), html::login.size()}));
+                co_await net::async_send(*session, html::login, http::status::ok);
             }),
         http::route::post<R"(/login)">([&](router::context<http::server_session<net::async_socket>> session,
                                            router::context<http::server_request<net::async_socket>> request,
-                                           router::context<user_session> us) -> task<void> {
-            // while (net::has_pending_data(*request)) {
-            auto data = co_await net::async_recv(*request);
-            auto jsn = json::load(as_string_view(data)).get<json::object>();
+                                           router::context<user_session> us,
+                                           router::context<std::string> body) -> task<void> {
+            auto jsn = json::load(*body).get<json::object>();
             us->logged = true;
             us->username = jsn["username"].get<json::string>();
             std::string response_data = "ok";
             auto hdrs = http::headers{{"Set-Cookie", fmt::format("username={}", jsn["username"].get<json::string>())}};
-            co_await net::async_send(*session, http::status::ok,
-                                     std::move(hdrs),// gcc bug ? cannot be inplace-constructed
-                                     std::as_bytes(std::span{response_data.data(), response_data.size()}));
+            co_await net::async_send(*session, response_data, http::status::ok,
+                                     std::move(hdrs));// gcc bug ? cannot be inplace-constructed
         }),
         http::route::get<R"(/chat)">([&](router::context<http::server_session<net::async_socket>> session,
                                          router::context<http::server_request<net::async_socket>> request,
@@ -128,22 +123,18 @@ int main(int argc, char **argv) {
             scope->spawn([](auto session, auto &all_sessions, const std::string username) -> task<void> {
                 all_sessions.push_front(&session);
                 spdlog::info("websocket connection started...");
-                while (true) try {
-                        std::string full_data;
+                while (net::has_pending_data(session)) try {
                         auto message = co_await net::async_recv(session);
-                        while (net::has_pending_data(message)) {
-                            auto data = co_await net::async_recv(message);
-                            full_data += as_string_view(data);
-                        }
-                        spdlog::info("data from {} ({}): {}", username, session.remote_endpoint(), full_data);
+                        std::string body;
+                        co_await net::async_recv(message, std::back_inserter(body));
+                        spdlog::info("data from {} ({}): {}", username, session.remote_endpoint(), body);
                         spdlog::info("{} other connections", std::size(all_sessions) - 1);
                         using namespace poly::literals;
-                        auto data_for_others = json::dump(json::object{"user"_kw = username, "message"_kw = full_data});
+                        auto data_for_others = json::dump(json::object{"user"_kw = username, "message"_kw = body});
                         for (auto other_session : all_sessions) {
                             if (*other_session != session) {
                                 spdlog::info("sending data to: {}", other_session->remote_endpoint());
-                                co_await net::async_send(*other_session, as_bytes(std::span{data_for_others.data(),
-                                                                                            data_for_others.size()}));
+                                co_await net::async_send(*other_session, data_for_others);
                             }
                         }
                     } catch (std::system_error const &error) {
@@ -162,19 +153,17 @@ int main(int argc, char **argv) {
                                router::context<http::server_request<net::async_socket>> request) -> task<void> {
             spdlog::info("unhandled: {}", request->url());
             std::string_view not_found = R"(<div><h6>Not found</h6><p>{}</p></div>)";
-            co_await net::async_send(*session, http::status::not_found,
-                                     as_bytes(std::span{not_found.data(), not_found.size()}));
+            co_await net::async_send(*session, not_found, http::status::not_found);
         })};
     sync_wait(
         [&]() -> task<void> {
             co_await web::async_serve(server, g_stop_source.get_token(), [&] {
                 return [root_path, &router, &scope = scope, us = user_session{}]<typename Session, typename Request>(
                            Session &session, Request request) mutable -> task<void> {
+                    std::string body;
+                    co_await net::async_recv(request, std::back_inserter(body));
                     co_await router(request.url(), request.method(), std::ref(session), std::ref(request),
-                                    std::ref(scope), std::ref(us));
-                    while (net::has_pending_data(request)) {
-                        co_await net::async_recv(request);// flush unused body
-                    }
+                                    std::ref(scope), std::ref(us), std::ref(body));
                 };
             });
             spdlog::info("terminated !");

@@ -144,7 +144,7 @@ int main(int argc, char **argv) {
                 spdlog::info("opening: {}", (root_path / path).string());
                 auto file =
                     open_file(context, root_path / path, g6::open_file_mode::existing | g6::open_file_mode::read);
-                co_await web::async_message(*session, http::status::ok, [&file](auto &message) -> task<> {
+                co_await net::async_send(*session, http::status::ok, [&file](auto &message) -> task<> {
                     std::array<char, 1024> data{};
                     size_t offset = 0;
                     const size_t total = file.size();

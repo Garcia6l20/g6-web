@@ -78,8 +78,8 @@ TEST_CASE("http-server: basic request/response", "[g6::web::http]") {
             auto client = co_await net::async_connect(ctx, web::proto::http, server_endpoint);
             co_await g6::schedule_after(ctx, 100ms);
             http::headers hdrs{{"Cookie", "one=1; two=2"}};
-            auto response = co_await net::async_send(client, std::string_view{"Hello !"}, "/", http::method::post,
-                                                     std::move(hdrs));
+            auto response =
+                co_await net::async_send(client, std::string_view{"Hello !"}, "/", http::method::post, std::move(hdrs));
             std::string body;
             co_await net::async_recv(response, std::back_inserter(body));
             for (auto set_cookie : response.get_headers("Set-Cookie")) {//
@@ -114,11 +114,11 @@ TEST_CASE("http-server: chunked request/response", "[g6::web::http]") {
                     spdlog::info("body: {}", body);
                     REQUIRE(body == "Hello world !!");
                     http::headers hdrs{{"Set-Cookie", "one=1"}, {"Set-Cookie", "two=2"}};
-                    co_await web::async_message(session, http::status::ok, std::move(hdrs),
+                    co_await net::async_send(session, http::status::ok, std::move(hdrs),
                         [](auto &message) -> task<> {
-                    co_await net::async_send(message, std::string_view{"Ola "});
-                    co_await net::async_send(message, std::string_view{"el "});
-                    co_await net::async_send(message, std::string_view{"mundo !!"});
+                            co_await net::async_send(message, std::string_view{"Ola "});
+                            co_await net::async_send(message, std::string_view{"el "});
+                            co_await net::async_send(message, std::string_view{"mundo !!"});
                         });
                 };
             });
@@ -130,11 +130,11 @@ TEST_CASE("http-server: chunked request/response", "[g6::web::http]") {
             auto client = co_await net::async_connect(ctx, web::proto::http, server_endpoint);
             co_await g6::schedule_after(ctx, 100ms);
             http::headers hdrs{{"Cookie", "one=1; two=2"}};
-            auto response = co_await web::async_message(
+            auto response = co_await net::async_send(
                 client, "/", http::method::post, std::move(hdrs), [](auto &message) -> task<> {
-            co_await net::async_send(message, std::string_view{"Hello "});
-            co_await net::async_send(message, std::string_view{"world "});
-            co_await net::async_send(message, std::string_view{"!!"});
+                    co_await net::async_send(message, std::string_view{"Hello "});
+                    co_await net::async_send(message, std::string_view{"world "});
+                    co_await net::async_send(message, std::string_view{"!!"});
                 });
             std::string body;
             co_await net::async_recv(response, std::back_inserter(body));

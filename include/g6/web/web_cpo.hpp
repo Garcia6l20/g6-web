@@ -10,8 +10,6 @@ namespace g6::web {
     G6_MAKE_CPO(make_session)
     G6_MAKE_CPO(upgrade_connection)
 
-    G6_MAKE_CPO(async_message)
-
     G6_MAKE_CPO(get_context)
     G6_MAKE_CPO(get_socket)
 

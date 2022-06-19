@@ -40,8 +40,11 @@ namespace g6 {
         task<ws::server_session<Socket>> tag_invoke(tag_t<web::upgrade_connection>, web::proto::ws_,
                                                     http::server_session<Socket> &http_session,
                                                     http::server_request<Socket> &request) {
-            std::string body;
-            co_await net::async_recv(request, std::back_inserter(body));
+            if (net::has_pending_data(request)) {
+                // flush
+                std::string body;
+                co_await net::async_recv(request, std::back_inserter(body));
+            }
 #ifdef G6_WEB_DEBUG
             for (auto &h : request.headers()) { spdlog::debug("{} -> {}", h.first, h.second); }
 #endif

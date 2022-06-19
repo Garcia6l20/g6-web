@@ -5,24 +5,24 @@ socket.addEventListener('open', function (event) {{
 }});
 
 function send_message() {
-    socket.send($('#user-message').val())
-    $('#user-message').val('')
+    socket.send($('#user-message').val());
+    $('#user-message').val('');
 }
 
 $('#user-message').keydown(function (e) {
     if (e.ctrlKey && e.keyCode == 13) {
-        send_message()
+        send_message();
     }
 });
 
 $('#user-form').submit(function( event ) {
-    send_message()
     event.preventDefault();
+    send_message();
 });
 
 // Listen for messages
 socket.addEventListener('message', function (event) {{
     var data = JSON.parse(event.data);
     console.log('Message from server ', data);
-    $('#room-messages').append(`<li class="list-group-item">${data.message} <small>${data.user}</small></li>`)
+    $('#room-messages').append(`<li class="list-group-item">${data.message} <small>${data.user}</small></li>`);
 }});

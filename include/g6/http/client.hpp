@@ -56,7 +56,7 @@ namespace g6::http {
             co_return net::async_recv(client);
         }
 
-        friend task<detail::chunked_request<Socket>> tag_invoke(tag_t<web::async_message>, client &client, std::string_view path,
+        friend task<detail::chunked_request<Socket>> tag_invoke(tag_t<net::async_send>, client &client, std::string_view path,
                                                         http::method method = http::method::get, http::headers hdrs = {}) {
             detail::chunked_request<Socket> req{client.socket, method, path, std::move(hdrs)};
             co_await net::async_send(req); // send http header
@@ -64,8 +64,11 @@ namespace g6::http {
         }
 
         template <typename Job>
-        friend task<detail::response_parser<Socket>> tag_invoke(tag_t<web::async_message>, client &client, std::string_view path,
-                                                        http::method method, http::headers hdrs, Job &&job) {
+        friend task<detail::response_parser<Socket>> tag_invoke(tag_t<net::async_send>, client &client, std::string_view path,
+                                                        http::method method, http::headers hdrs, Job &&job)
+        requires requires(detail::chunked_request<Socket> &req) {
+            {job(req)} -> std::same_as<task<>>;
+        } {
             detail::chunked_request<Socket> req{client.socket, method, path, std::move(hdrs)};
             co_await net::async_send(req); // send http header
             co_await job(req);
@@ -73,15 +76,21 @@ namespace g6::http {
         }
 
         template <typename Job>
-        friend auto tag_invoke(tag_t<web::async_message>, client &client, std::string_view path,
-                                                        http::method method, Job &&job) {
-            return web::async_message(client, path, method, http::headers{}, std::forward<Job>(job));
+        friend auto tag_invoke(tag_t<net::async_send>, client &client, std::string_view path,
+                                                        http::method method, Job &&job)
+        requires requires(detail::chunked_request<Socket> &req) {
+            {job(req)} -> std::same_as<task<>>;
+        } {
+            return net::async_send(client, path, method, http::headers{}, std::forward<Job>(job));
         }
 
         template <typename Job>
-        friend auto tag_invoke(tag_t<web::async_message>, client &client, std::string_view path,
-                                                        Job &&job) {
-            return web::async_message(client, path, http::method::get, http::headers{}, std::forward<Job>(job));
+        friend auto tag_invoke(tag_t<net::async_send>, client &client, std::string_view path,
+                                                        Job &&job)
+        requires requires(detail::chunked_request<Socket> &req) {
+            {job(req)} -> std::same_as<task<>>;
+        } {
+            return net::async_send(client, path, http::method::get, http::headers{}, std::forward<Job>(job));
         }
 
     public:
