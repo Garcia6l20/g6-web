@@ -35,19 +35,7 @@ int main(int, char **) {
                             while (not session_stop.stop_requested()) {
                                 auto message = co_await net::async_recv(session);
                                 std::string body;
-                                while (net::has_pending_data(message)) {
-                                    std::array<std::byte, 256> data;
-                                    auto sz = co_await net::async_recv(message, data);
-                                    if (sz) {
-                                        auto sv_body =
-                                            std::string_view{reinterpret_cast<const char *>(data.data()), *sz};
-                                        body += sv_body;
-                                    } else {
-                                        spdlog::info("session terminated: {}", to_string(sz.error()));
-                                        session_stop.request_stop();
-                                        co_return;
-                                    }
-                                }
+                                co_await net::async_recv(message, std::back_inserter(body));
                                 spdlog::info("body: {}", body);
                                 if (body == "ping") {
                                     co_await net::async_send(session, as_bytes(std::span{"pong", 4}));

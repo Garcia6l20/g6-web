@@ -40,21 +40,11 @@ int main(int, char **) {
             constexpr std::string_view ping = "ping";
             co_await net::async_send(session, as_bytes(std::span{ping.data(), ping.size()}));
             auto response = co_await net::async_recv(session, stop_source.get_token());
-            std::string body_str;
-            while (net::has_pending_data(response)) {
-                std::array<std::byte, 256> data;
-                auto sz = co_await net::async_recv(response, data);
-                if (sz) {
-                    auto body_sv = as_string_view(std::span{data.data(), *sz});
-                    body_str += body_sv;
-                } else {
-                    spdlog::info("session terminated: {}", to_string(sz.error()));
-                    stop_source.request_stop();
-                    co_return;
-                }
-            }
-            spdlog::info("body: {}", body_str);
-            co_await session.async_close();
+            std::string rx_body;
+            co_await net::async_recv(response, std::back_inserter(rx_body));
+            co_await net::async_close(session);
+            spdlog::info("client rx body: {}", rx_body);
+            co_await net::async_close(session);
         }(),
         async_exec(ctx, stop_source.get_token()));
 

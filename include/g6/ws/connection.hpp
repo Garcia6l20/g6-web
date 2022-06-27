@@ -73,7 +73,7 @@ namespace g6::ws {
                         uint16_t status;
                         co_await net::async_recv(socket_, as_writable_bytes(std::span{&status, 1}));
                         header_.mask_body(as_writable_bytes(std::span{&status, 1}));
-                        connection_.status_ = status_code(std::byteswap(status));
+                        connection_.status_ = status_code(byteswap(status));
                         co_return 0;
                     } else {
                         connection_.status_ = status_code::closed_abnormally;
@@ -215,7 +215,7 @@ namespace g6::ws {
             if constexpr (not is_server) { h.masking_key = details::make_masking_key(); }
             co_await h.send(self.socket_);
             // status
-            status = std::byteswap(status);
+            status = byteswap(status);
             h.mask_body(as_writable_bytes(std::span{&status, 1}));
             co_await net::async_send(self.socket_, std::span{&status, 1});
             self.status_ = reason;

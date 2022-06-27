@@ -60,7 +60,7 @@ namespace g6 {
                 {"Sec-WebSocket-Key", hash},
                 {"Sec-WebSocket-Version", std::to_string(ws::client<Context, Socket>::max_ws_version_)},
             };
-            auto response = co_await net::async_send(http_client, path, http::method::get, std::move(hdrs));
+            auto response = co_await net::async_send(http_client, std::string_view{""}, path, http::method::get, std::move(hdrs));
             std::string body;
             co_await net::async_recv(response, std::back_inserter(body));
             if (response.status_code() != http::status::switching_protocols) {
