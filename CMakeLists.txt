@@ -48,7 +48,9 @@ file(GLOB_RECURSE ${PROJECT_NAME}_headers include/)
 add_library(${PROJECT_NAME} ${${PROJECT_NAME}_headers}
   src/uri.cpp)
 add_library(g6::web ALIAS ${PROJECT_NAME})
-target_include_directories(${PROJECT_NAME} PUBLIC include)
+target_include_directories(${PROJECT_NAME} PUBLIC
+  $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>)
 target_link_libraries(${PROJECT_NAME} PUBLIC
   g6::tl
   g6::net
@@ -70,3 +72,7 @@ option(G6_HTTP_BUILD_EXAMPLES "Build G6 HTTP examples" ON)
 if(G6_BUILD_EXAMPLES OR G6_HTTP_BUILD_EXAMPLES)
   add_subdirectory(examples)
 endif()
+
+install(TARGETS ${PROJECT_NAME} DESTINATION bin)
+install(DIRECTORY include/ DESTINATION include
+  FILES_MATCHING PATTERN *)
