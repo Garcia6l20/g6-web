@@ -29,17 +29,7 @@ endif()
 #
 # nodejs/http_parser
 #
-include(FetchContent)
-FetchContent_Declare(_fetch_http_parser
-  GIT_REPOSITORY https://github.com/nodejs/http-parser
-  GIT_TAG main
-  CONFIGURE_COMMAND ""
-  INSTALL_COMMAND ""
-  BUILD_COMMAND ""
-  UPDATE_DISCONNECTED ON
-  )
-FetchContent_MakeAvailable(_fetch_http_parser)
-FetchContent_GetProperties(_fetch_http_parser)
+set(_fetch_http_parser_SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/external/http-parser)
 project(http_parser LANGUAGES C)
 add_library(http_parser STATIC
   ${_fetch_http_parser_SOURCE_DIR}/http_parser.c
