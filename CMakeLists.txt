@@ -45,6 +45,8 @@ add_library(${PROJECT_NAME} ${${PROJECT_NAME}_headers}
   ${http_parser_DIR}/http_parser.c
   ${http_parser_DIR}/http_parser.h
   )
+set_target_properties(${PROJECT_NAME} PROPERTIES
+  EXPORT_NAME web)
 add_library(g6::web ALIAS ${PROJECT_NAME})
 
 target_include_directories(${PROJECT_NAME} PUBLIC
