@@ -2,11 +2,9 @@
 
 #include <map>
 #include <string>
+#include <system_error>
 
 namespace g6::http {
-    namespace detail {
-#include <http_parser.h>
-    }
 
 /* Status Codes */
 #define G6_HTTP_STATUS_MAP(XX)                                                                                         \
@@ -76,8 +74,12 @@ namespace g6::http {
         G6_HTTP_STATUS_MAP(XX)
 #undef XX
     };
-    const char* to_string(status s) noexcept {
-        return http::detail::http_status_str(http::detail::http_status(s));
+    inline constexpr const char* to_string(status s) noexcept {
+#define XX(num, name, string) \
+        if (s == status::name) { return #string; }
+        G6_HTTP_STATUS_MAP(XX)
+#undef XX
+        return "Unknown status";
     }
 
 /* Request Methods */
@@ -131,16 +133,20 @@ namespace g6::http {
         G6_HTTP_METHOD_MAP(XX)
 #undef XX
     };
-    const char* to_string(method m) noexcept {
-        return http::detail::http_method_str(http::detail::http_method(m));
+    inline constexpr const char* to_string(method m) noexcept {
+#define XX(num, name, string) \
+        if (m == method::name) { return #string; }
+        G6_HTTP_METHOD_MAP(XX)
+#undef XX
+        return "Unknown method";
     }
 
     using headers = std::multimap<std::string, std::string>;
 
-    struct error_category_t final : std::error_category {
+    inline struct error_category_t final : std::error_category {
         [[nodiscard]] const char *name() const noexcept final { return "http"; }
         [[nodiscard]] std::string message(int error) const noexcept final {
-            return std::string{http::detail::http_status_str(http::detail::http_status(error))};
+            return std::string{to_string(http::status(error))};
         }
     } error_category{};
 

@@ -11,6 +11,7 @@ if (NOT G6_CMAKE)
 endif()
 
 find_package(ctre REQUIRED)
+find_package(spdlog REQUIRED)
 
 if(NOT TARGET g6::router)
   FetchContent_declare(g6-router-fetch
@@ -29,34 +30,40 @@ endif()
 #
 # nodejs/http_parser
 #
-set(_fetch_http_parser_SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/external/http-parser)
-project(http_parser LANGUAGES C)
-add_library(http_parser STATIC
-  ${_fetch_http_parser_SOURCE_DIR}/http_parser.c
-  ${_fetch_http_parser_SOURCE_DIR}/http_parser.h
-  )
-target_include_directories(http_parser PUBLIC ${_fetch_http_parser_SOURCE_DIR}/)
-add_library(http_parser::http_parser ALIAS http_parser)
+set(http_parser_DIR ${CMAKE_CURRENT_LIST_DIR}/external/http-parser)
 
 project(g6-web
-  LANGUAGES CXX
+  LANGUAGES CXX C
   VERSION 0.0.1
   )
 
 file(GLOB_RECURSE ${PROJECT_NAME}_headers include/)
 
 add_library(${PROJECT_NAME} ${${PROJECT_NAME}_headers}
-  src/uri.cpp)
+  src/uri.cpp
+  src/static_parser_handler.cpp
+  ${http_parser_DIR}/http_parser.c
+  ${http_parser_DIR}/http_parser.h
+  )
 add_library(g6::web ALIAS ${PROJECT_NAME})
+
 target_include_directories(${PROJECT_NAME} PUBLIC
   $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
+  $<INSTALL_INTERFACE:include>
+  )
+
+target_include_directories(${PROJECT_NAME} PRIVATE
+  ${http_parser_DIR}
+  )
+
 target_link_libraries(${PROJECT_NAME} PUBLIC
   g6::tl
   g6::net
   g6::router
-  ctre::ctre
-  http_parser::http_parser)
+  ctre::ctre)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE
+    spdlog::spdlog)
 
 option(G6_WEB_DEBUG "Enable debug logs in g6::web" OFF)
 if(G6_WEB_DEBUG)
@@ -73,6 +80,9 @@ if(G6_BUILD_EXAMPLES OR G6_HTTP_BUILD_EXAMPLES)
   add_subdirectory(examples)
 endif()
 
-install(TARGETS ${PROJECT_NAME} DESTINATION bin)
+install(TARGETS ${PROJECT_NAME}
+  LIBRARY DESTINATION lib
+  ARCHIVE DESTINATION lib)
+
 install(DIRECTORY include/ DESTINATION include
   FILES_MATCHING PATTERN *)

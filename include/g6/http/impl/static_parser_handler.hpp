@@ -20,15 +20,6 @@
 #include <vector>
 
 namespace g6::http::detail {
-    template<detail::http_parser_type type, typename T>
-    void init_parser(detail::http_parser *parser, T *owner) {
-        detail::http_parser_init(parser, type);
-        parser->data = owner;
-    }
-
-    template<detail::http_parser_type type, typename OwnerT>
-    using c_parser_ptr = g6::c_unique_ptr<detail::http_parser, init_parser<type, OwnerT>>;
-
     template<bool is_request>
     class static_parser_handler;
 
@@ -40,37 +31,13 @@ namespace g6::http::detail {
     class static_parser_handler {
         using self_type = static_parser_handler<is_request>;
 
-        static constexpr auto c_parser_type = []() {
-            if constexpr (is_request) {
-                return detail::http_parser_type::HTTP_REQUEST;
-            } else {
-                return detail::http_parser_type::HTTP_RESPONSE;
-            }
-        }();
-
-        using parser_ptr = c_parser_ptr<c_parser_type, static_parser_handler>;
-
     protected:
         using method_or_status_t = std::conditional_t<is_request, http::method, http::status>;
 
-        static_parser_handler() = default;
-        static_parser_handler(static_parser_handler &&other) noexcept
-            : parser_{std::move(other.parser_)}, header_field_{std::move(other.header_field_)}, url_{std::move(
-                                                                                                    other.url_)},
-              body_{std::move(other.body_)}, state_{std::move(other.state_)}, headers_{std::move(other.headers_)} {
-            parser_->data = this;
-        }
-
-        static_parser_handler &operator=(static_parser_handler &&other) noexcept {
-            parser_ = std::move(other.parser_);
-            header_field_ = std::move(other.header_field_);
-            url_ = std::move(other.url_);
-            body_ = std::move(other.body_);
-            state_ = std::move(other.state_);
-            headers_ = std::move(other.headers_);
-            parser_->data = this;
-            return *this;
-        }
+        static_parser_handler() noexcept;
+        ~static_parser_handler() noexcept;
+        static_parser_handler(static_parser_handler &&other) noexcept;
+        static_parser_handler &operator=(static_parser_handler &&other) noexcept;
         static_parser_handler(const static_parser_handler &) noexcept = delete;
         static_parser_handler &operator=(const static_parser_handler &) noexcept = delete;
 
@@ -91,33 +58,17 @@ namespace g6::http::detail {
         [[nodiscard]] auto const&body() { return body_; }
 
     public:
-        bool parse(std::span<std::byte const> data) {
-            body_ = {};
-            spdlog::debug("static_parser_handler::parse: {}",
-                          std::string_view{reinterpret_cast<const char *>(data.data()), data.size()});
-            const auto count = execute_parser(reinterpret_cast<const char *>(data.data()), data.size());
-            if (count < data.size()) {
-                throw std::runtime_error{fmt::format(FMT_STRING("parse error: {}"),
-                                                     http_errno_description(detail::http_errno(parser_->http_errno)))};
-            }
-            return state_ == parser_status::on_message_complete;
-        }
+        bool parse(std::span<std::byte const> data);
 
-        [[nodiscard]] bool chunked() const {
-            if (parser_->uses_transfer_encoding) {
-                return header_at("Transfer-Encoding") == std::string_view{"chunked"};
-            } else {
-                return false;
-            }
-        }
+        [[nodiscard]] bool chunked() const;
 
         friend bool tag_invoke(tag_t<g6::net::has_pending_data>,
                                g6::http::detail::static_parser_handler<is_request> &sph) noexcept {
             return sph.state_ != parser_status::on_message_complete;
         }
 
-        auto method() const { return static_cast<http::method>(parser_->method); }
-        auto status_code() const { return static_cast<http::status>(parser_->status_code); }
+        http::method method() const;
+        http::status status_code() const;
 
         method_or_status_t status_code_or_method() const {
             if constexpr (is_request) {
@@ -132,19 +83,7 @@ namespace g6::http::detail {
 
         auto &url() { return url_; }
 
-        std::string to_string() const {
-            std::vector<char> out;
-            std::string_view type;
-            if constexpr (is_request) {
-                fmt::format_to(std::back_inserter(out), "request {} {}",
-                               detail::http_method_str(detail::http_method(parser_->method)), url_);
-            } else {
-                fmt::format_to(std::back_inserter(out), "response {} ",
-                               detail::http_status_str(detail::http_status(parser_->status_code)));
-            }
-            fmt::format_to(std::back_inserter(out), "{}", body_);
-            return out.data();
-        }
+        std::string to_string() const;
 
         auto &headers() { return headers_; }
 
@@ -228,108 +167,30 @@ namespace g6::http::detail {
             on_chunk_header,
             on_chunk_header_compete,
         };
+        void *c_parser_ = nullptr;
 
-        inline static auto &instance(detail::http_parser *parser) { return *static_cast<self_type *>(parser->data); }
+        static int on_message_begin(void *parser);
+        static int on_url(void *parser, const char *data, size_t len);
+        static int on_status(void *parser, const char *data, size_t len);
+        static int on_header_field(void *parser, const char *data, size_t len);
+        static int on_header_value(void *parser, const char *data, size_t len);
+        static int on_headers_complete(void *parser);
+        static int on_body(void *parser, const char *data, size_t len);
+        static int on_message_complete(void *parser);
+        static int on_chunk_header(void *parser);
+        static int on_chunk_complete(void *parser);
 
-        static inline int on_message_begin(detail::http_parser *parser) {
-            auto &this_ = instance(parser);
-            this_.state_ = parser_status::on_message_begin;
-            return 0;
-        }
-
-        static inline int on_url(detail::http_parser *parser, const char *data, size_t len) {
-            auto &this_ = instance(parser);
-            this_.url_ = web::uri::unescape({data, len});
-            this_.state_ = parser_status::on_url;
-            return 0;
-        }
-
-        static inline int on_status(detail::http_parser *parser, const char *data, size_t len) {
-            auto &this_ = instance(parser);
-            this_.state_ = parser_status::on_status;
-            return 0;
-        }
-
-        static inline int on_header_field(detail::http_parser *parser, const char *data, size_t len) {
-            auto &this_ = instance(parser);
-            this_.state_ = parser_status::on_header_field;
-            this_.header_field_ = {data, len};
-            return 0;
-        }
-
-        static inline int on_header_value(detail::http_parser *parser, const char *data, size_t len) {
-            auto &this_ = instance(parser);
-            if (this_.state_ == parser_status::on_header_field) {
-                this_.headers_.emplace(this_.header_field_, std::string{data, data + len});
-            } else {
-                // header has been cut
-                auto it = this_.headers_.find(this_.header_field_);
-                assert(it != this_.headers_.end());
-                it->second.append(std::string_view{data, data + len});
-            }
-            this_.state_ = parser_status::on_header_value;
-
-            return 0;
-        }
-
-        static inline int on_headers_complete(detail::http_parser *parser) {
-            auto &this_ = instance(parser);
-            this_.state_ = parser_status::on_headers_complete;
-            return 0;
-        }
-
-        static inline int on_body(detail::http_parser *parser, const char *data, size_t len) {
-            auto &this_ = instance(parser);
-            this_.body_ = std::as_writable_bytes(std::span{const_cast<char *>(data), len});
-            this_.state_ = parser_status::on_body;
-            return 0;
-        }
-
-        static inline int on_message_complete(detail::http_parser *parser) {
-            auto &this_ = instance(parser);
-            this_.state_ = parser_status::on_message_complete;
-            return 0;
-        }
-
-        static inline int on_chunk_header(detail::http_parser *parser) {
-            auto &this_ = instance(parser);
-            this_.state_ = parser_status::on_chunk_header;
-            return 0;
-        }
-
-        static inline int on_chunk_complete(detail::http_parser *parser) {
-            auto &this_ = instance(parser);
-            this_.state_ = parser_status::on_chunk_header_compete;
-            return 0;
-        }
-
-        auto execute_parser(const char *data, size_t len) {
-            return http_parser_execute(parser_.get(), &http_parser_settings_, data, len);
-        }
+        size_t execute_parser(const char *data, size_t len);
 
         parser_status status() const noexcept {
             return state_;
         }
 
     private:
-        parser_ptr parser_ = parser_ptr::make(this);
-        inline static detail::http_parser_settings http_parser_settings_ = {
-            on_message_begin,    on_url,  on_status,           on_header_field, on_header_value,
-            on_headers_complete, on_body, on_message_complete, on_chunk_header, on_chunk_complete,
-        };
         parser_status state_{parser_status::none};
         std::string header_field_;
         std::string url_;
         std::span<std::byte> body_;
         http::headers headers_;
-
-        //		template<bool _is_response, is_body BodyT>
-        //		friend struct abstract_message;
-        //
-        //		template<net::is_socket, net::message_direction,
-        //net::connection_mode> 		friend struct cppcoro::http::message;
-        //
-        //		template<typename, bool>
-        //		friend struct cppcoro::http::message_header;
     };
 }// namespace g6::http::detail
