@@ -30,6 +30,9 @@ add_executable(g6-chat
   login_html.hpp)
 target_link_libraries(g6-chat PRIVATE spdlog::spdlog g6::web g6::router)
 
+install(TARGETS g6-chat
+  RUNTIME DESTINATION bin)
+
 add_executable(g6-chat-bot
   bot.cpp)
 target_link_libraries(g6-chat-bot PRIVATE spdlog::spdlog g6::web)
