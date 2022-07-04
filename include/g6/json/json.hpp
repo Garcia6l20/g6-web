@@ -50,6 +50,7 @@ namespace g6::json {
             if (begin == end) { throw error("syntax error"); }
             ++begin;
             result[std::move(key)] = load(begin, end);
+            if (*begin == '}') break;
         }
         return value{std::move(result)};
     }
