@@ -80,5 +80,14 @@ namespace g6 {
             co_return co_await web::upgrade_connection(
                 http_client, std::type_identity<g6::ws::client<Context, net::async_socket>>{}, path);
         }
+
+        template<typename Context>
+        task<ws::client<Context, ssl::async_socket>>
+        tag_invoke(tag_t<net::async_connect>, Context &context, g6::web::proto::wss_ const &,
+                   const net::ip_endpoint &endpoint, std::string_view path = "/", ssl::verify_flags verify_flags = ssl::verify_flags::none) {
+            auto http_client = co_await net::async_connect(context, web::proto::https, endpoint, verify_flags);
+            co_return co_await web::upgrade_connection(
+                http_client, std::type_identity<g6::ws::client<Context, ssl::async_socket>>{}, path);
+        }
     }// namespace net
 }// namespace g6

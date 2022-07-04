@@ -59,6 +59,7 @@ namespace g6::ws {
             ssize_t remaining_size = header_.payload_length - current_payload_offset_;
             if (remaining_size <= 0) {
                 assert(!header_.fin);
+            __get_header:
                 header_ = co_await header::receive(socket_);
                 current_payload_offset_ = 0;
                 remaining_size = header_.payload_length - current_payload_offset_;
@@ -72,11 +73,27 @@ namespace g6::ws {
                         co_await net::async_recv(socket_, as_writable_bytes(std::span{&status, 1}));
                         header_.mask_body(as_writable_bytes(std::span{&status, 1}));
                         connection_.status_ = status_code(byteswap(status));
-                        co_return 0;
                     } else {
                         connection_.status_ = status_code::closed_abnormally;
-                        co_return 0;
                     }
+                    throw std::system_error{std::make_error_code(std::errc::connection_reset),
+                                            format("connection closed: {}", to_string(connection_.status_))};
+                } else if (header_.opcode == op_code::ping) {
+                    // send pong response
+                    header pong_h{
+                        .fin = true,
+                        .opcode = op_code::pong,
+                        .mask = not is_server,
+                        .masking_key = is_server ? 0 : details::make_masking_key(),
+                    };
+                    std::byte body_data[128];
+                    std::span body{body_data, header_.payload_length};
+                    co_await net::async_recv(socket_, body);
+                    pong_h.payload_length = header_.payload_length;
+                    co_await pong_h.send(socket_);
+                    pong_h.mask_body(body);
+                    co_await net::async_send(socket_, body);
+                    goto __get_header;
                 }
             }
             auto bytes_to_receive = std::min(data.size(), size_t(remaining_size));
@@ -86,8 +103,7 @@ namespace g6::ws {
 
             current_payload_offset_ += rx_size;
 
-            spdlog::debug("received: {} bytes ({}/{})", rx_size, current_payload_offset_,
-                          header_.payload_length);
+            spdlog::debug("received: {} bytes ({}/{})", rx_size, current_payload_offset_, header_.payload_length);
 
             co_return rx_size;
         }
