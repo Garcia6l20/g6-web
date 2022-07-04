@@ -119,7 +119,7 @@ namespace g6::json {
         if (ec != std::errc{}) {
             throw error{format("failed to parse number: {}", std::make_error_code(ec).message())};
         }
-        begin += ptr - &*begin;
+        begin = ptr;
         return value{result};
     }
 
@@ -154,7 +154,7 @@ namespace g6::json {
         throw std::runtime_error("Error occured while parsing value");
     }
 
-    value load(std::string_view data) {//
+    inline value load(std::string_view data) {//
         auto begin = std::begin(data);
         return load(begin, std::end(data));
     }
@@ -214,7 +214,7 @@ namespace g6::json {
             })(data);
     }
 
-    std::string dump(value const &data) {
+    inline std::string dump(value const &data) {
         thread_local static std::array<char, sizeof(double) * 2> tmp_chars;
         return data | poly::visit | []<typename T>(T const &val) { return dump(val); };
     }

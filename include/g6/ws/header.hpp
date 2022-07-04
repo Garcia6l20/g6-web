@@ -28,7 +28,7 @@ namespace g6::ws {
         ping = 0x09,
         pong = 0x0A,
     };
-    std::string to_string(op_code code) {
+    inline std::string to_string(op_code code) {
         switch (code) {
             using enum op_code;
             case continuation_frame:
@@ -64,7 +64,7 @@ namespace g6::ws {
         unexpected_condition = 1011,
         tls_handshake_failure = 1015,
     };
-    std::string to_string(status_code status) {
+    inline std::string to_string(status_code status) {
         switch (status) {
             using enum status_code;
             case normal_closure:
@@ -153,28 +153,6 @@ namespace g6::ws {
                 for (size_t ii = 0; ii < buffer.size(); ++ii) { buffer[ii] = buffer[ii] xor key[ii % 4]; }
             }
         }
-
-        // void update_payload_offset() {
-        //     size_t mask_offset = 2;
-        //     if (payload_length >= 127 && payload_length <= std::numeric_limits<uint16_t>::max()) {
-        //         mask_offset = 4;
-        //     } else if (payload_length > std::numeric_limits<uint16_t>::max()) {
-        //         mask_offset = 10;
-        //     }
-        //     if (mask) { mask_offset += 4; }
-        //     payload_offset = mask_offset;
-        // }
-
-        // std::tuple<size_t, size_t> calc_payload_size(size_t requested_payload_sz, size_t max_sz) {
-        //     size_t to_send = 0;
-        //     payload_length = requested_payload_sz;
-        //     do {
-        //         if (to_send > max_sz) { payload_length -= (to_send - max_sz); }
-        //         update_payload_offset();
-        //         to_send = payload_length + payload_offset;
-        //     } while (to_send > max_sz);
-        //     return {to_send, payload_length};
-        // }
 
         task<> send(auto &socket) {
             std::array<std::byte, 8> buffer;

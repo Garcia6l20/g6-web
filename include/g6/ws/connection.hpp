@@ -9,11 +9,13 @@
 
 #include <algorithm>
 #include <bit>
+#include <random>
 #include <span>
 #include <stop_token>
-#include <random>
 
 #include <cassert>
+
+#include <spdlog/spdlog.h>
 
 namespace g6::ws {
 
@@ -30,16 +32,12 @@ namespace g6::ws {
     template<bool is_server, typename Socket>
     task<size_t> tag_invoke(tag_t<net::async_send>, connection<is_server, Socket> &, std::span<std::byte const>);
 
-    // template<bool is_server, typename Socket>
-    // task<rx_message<is_server, Socket>> tag_invoke(tag_t<net::async_recv>, connection<is_server, Socket> &conn,
-    //                                                     std::stop_token stop);
-
     namespace details {
-        uint32_t make_masking_key() noexcept {
+        inline uint32_t make_masking_key() noexcept {
             static std::mt19937 rng{size_t(time(nullptr) * getpid())};
             return uint32_t(rng());
         }
-    }
+    }// namespace details
 
     template<bool is_server, typename Socket>
     class rx_message {
@@ -54,8 +52,8 @@ namespace g6::ws {
 
         explicit rx_message(connection<is_server, Socket> &conn) noexcept : connection_{conn}, socket_{conn.socket_} {}
 
-        friend task<rx_message<is_server, Socket>> tag_invoke<>(tag_t<net::async_recv>, connection<is_server, Socket> &conn,
-                                                             std::stop_token stop);
+        friend task<rx_message<is_server, Socket>>
+        tag_invoke<>(tag_t<net::async_recv>, connection<is_server, Socket> &conn, std::stop_token stop);
 
         task<size_t> async_recv(std::span<std::byte> data) {
             ssize_t remaining_size = header_.payload_length - current_payload_offset_;
@@ -102,7 +100,7 @@ namespace g6::ws {
             return !msg.header_.fin || msg.current_payload_offset_ < msg.header_.payload_length;
         }
     };
-               
+
     template<bool is_server, typename Socket>
     class tx_message {
         connection<is_server, Socket> &connection_;
@@ -119,11 +117,10 @@ namespace g6::ws {
         };
 
     public:
-        explicit tx_message(connection<is_server, Socket> &conn) noexcept : connection_{conn}, socket_{conn.socket_} {
+        explicit tx_message(connection<is_server, Socket> &conn) noexcept : connection_{conn}, socket_{conn.socket_} {}
 
-        }
-
-        friend task<size_t> tag_invoke(tag_t<net::async_send>, tx_message &msg, std::span<std::byte const> data, bool fin = false) {
+        friend task<size_t> tag_invoke(tag_t<net::async_send>, tx_message &msg, std::span<std::byte const> data,
+                                       bool fin = false) {
             msg.header_.fin = fin;
             msg.header_.payload_length = data.size();
             co_await msg.header_.send(msg.socket_);
@@ -153,7 +150,6 @@ namespace g6::ws {
                 co_await msg.header_.send(msg.socket_);
             }
         }
-
     };
 
     template<bool is_server, typename Socket>
@@ -194,17 +190,19 @@ namespace g6::ws {
             co_return co_await net::async_send(msg, data, true);
         }
 
-        template <typename Job>
-        friend task<> tag_invoke(tag_t<net::async_send>, connection &conn, Job &&job)
-        requires requires(tx_message<is_server, Socket> &msg){
+        template<typename Job>
+        friend task<> tag_invoke(tag_t<net::async_send>, connection &conn, Job &&job) requires
+            requires(tx_message<is_server, Socket> &msg) {
             { job(msg) } -> std::same_as<task<>>;
-        } {
+        }
+        {
             tx_message<is_server, Socket> msg{conn};
             co_await job(msg);
             co_await net::async_close(msg);
         }
 
-        friend task<> tag_invoke(tag_t<net::async_close>, connection& self, status_code reason = status_code::normal_closure) {            
+        friend task<> tag_invoke(tag_t<net::async_close>, connection &self,
+                                 status_code reason = status_code::normal_closure) {
             uint16_t status = uint16_t(reason);
             header h{
                 .fin = true,
