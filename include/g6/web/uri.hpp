@@ -55,7 +55,7 @@ namespace g6::web {
         std::string_view path{};
         std::string_view parameters{};
 
-        uri(std::string_view input) noexcept : uri_{std::move(input)} {
+        uri(std::string_view input) noexcept : uri_{input} {
             if (auto m = uri_impl.match(uri_); m) {
                 scheme = m.get<2>();
                 host = m.get<5>();
@@ -64,6 +64,10 @@ namespace g6::web {
                 if (auto p = m.get<12>(); p.size()) { parameters = p; }
             }
         }
+        uri(uri const&) = delete;
+        uri(uri &&) = delete;
+        uri &operator=(uri const&) = delete;
+        uri &operator=(uri &&) = delete;
 
         [[nodiscard]] std::optional<net::ip_endpoint> endpoint() const {
             auto addr = g6::from_string<net::ip_address>(host);
@@ -137,6 +141,11 @@ namespace g6::web {
                 }
             }
             return output;
+        }
+
+        template<typename Context>
+        friend auto tag_invoke(tag_t<g6::format_to>, uri const& self, Context &ctx) {
+            return g6::format_to(ctx.out(), "{}", self.uri_);
         }
     };
 }// namespace g6::web
