@@ -62,10 +62,8 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
   g6::tl
   g6::net
   g6::router
-  ctre::ctre)
-
-target_link_libraries(${PROJECT_NAME} PRIVATE
-    spdlog::spdlog)
+  ctre::ctre
+  spdlog::spdlog)
 
 option(G6_WEB_DEBUG "Enable debug logs in g6::web" OFF)
 if(G6_WEB_DEBUG)
