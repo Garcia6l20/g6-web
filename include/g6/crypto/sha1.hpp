@@ -3,6 +3,7 @@
 #include <mbedtls/sha1.h>
 
 #include <string_view>
+#include <string>
 
 namespace g6::crypto {
 	class sha1 {
