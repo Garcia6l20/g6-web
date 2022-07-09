@@ -219,20 +219,22 @@ namespace g6::ws {
 
         friend task<> tag_invoke(tag_t<net::async_close>, connection &self,
                                  status_code reason = status_code::normal_closure) {
-            uint16_t status = uint16_t(reason);
-            header h{
-                .fin = true,
-                .opcode = op_code::connection_close,
-                .mask = not is_server,
-                .payload_length = sizeof(status),
-            };
-            if constexpr (not is_server) { h.masking_key = details::make_masking_key(); }
-            co_await h.send(self.socket_);
-            // status
-            status = byteswap(status);
-            h.mask_body(as_writable_bytes(std::span{&status, 1}));
-            co_await net::async_send(self.socket_, std::span{&status, 1});
-            self.status_ = reason;
+            if (self.status_ == status_code::undefined) {
+                uint16_t status = uint16_t(reason);
+                header h{
+                    .fin = true,
+                    .opcode = op_code::connection_close,
+                    .mask = not is_server,
+                    .payload_length = sizeof(status),
+                };
+                if constexpr (not is_server) { h.masking_key = details::make_masking_key(); }
+                co_await h.send(self.socket_);
+                // status
+                status = byteswap(status);
+                h.mask_body(as_writable_bytes(std::span{&status, 1}));
+                co_await net::async_send(self.socket_, std::span{&status, 1});
+                self.status_ = reason;
+            }
         }
 
         task<rx_message<is_server, Socket>> await() { co_return rx_message<is_server, Socket>{*this}; }
