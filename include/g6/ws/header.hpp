@@ -64,6 +64,7 @@ namespace g6::ws {
         unexpected_condition = 1011,
         tls_handshake_failure = 1015,
     };
+
     inline std::string to_string(status_code status) {
         switch (status) {
             using enum status_code;
@@ -95,6 +96,13 @@ namespace g6::ws {
                 return "unknown";
         }
     }
+
+	inline struct error_category_t final : std::error_category {
+        [[nodiscard]] const char* name() const noexcept final { return "ws"; }
+        [[nodiscard]] std::string message(int error) const noexcept final {
+			return to_string(status_code(error));
+		}
+	} error_category{};
 
     struct header {
         bool fin = false;

@@ -67,17 +67,29 @@ namespace g6::ws {
                               header_.payload_length);
                 if (header_.opcode == op_code::connection_close) {
                     current_payload_offset_ = header_.payload_length;
+                    uint16_t status;
                     if (header_.payload_length == 2) {
                         // get status
-                        uint16_t status;
                         co_await net::async_recv(socket_, as_writable_bytes(std::span{&status, 1}));
                         header_.mask_body(as_writable_bytes(std::span{&status, 1}));
                         connection_.status_ = status_code(byteswap(status));
                     } else {
                         connection_.status_ = status_code::closed_abnormally;
+                        status = byteswap(uint16_t(status_code::closed_abnormally));
                     }
-                    throw std::system_error{std::make_error_code(std::errc::connection_reset),
-                                            format("connection closed: {}", to_string(connection_.status_))};
+                    if (not connection_.close_sent_) {
+                        header h{
+                            .fin = true,
+                            .opcode = op_code::connection_close,
+                            .mask = not is_server,
+                            .payload_length = sizeof(status),
+                        };
+                        if constexpr (not is_server) { h.masking_key = details::make_masking_key(); }
+                        co_await h.send(socket_);
+                        co_await net::async_send(socket_, as_bytes(std::span{&status, 1}));
+                        connection_.close_sent_ = true;
+                    }
+                    throw std::system_error{int(connection_.status_), ws::error_category};
                 } else if (header_.opcode == op_code::ping) {
                     // send pong response
                     header pong_h{
@@ -181,6 +193,7 @@ namespace g6::ws {
         const uint32_t ws_version;
 
         status_code status_ = status_code::undefined;
+        bool close_sent_ = false;
 
     public:
         static constexpr uint32_t max_ws_version_ = 13;
@@ -219,7 +232,7 @@ namespace g6::ws {
 
         friend task<> tag_invoke(tag_t<net::async_close>, connection &self,
                                  status_code reason = status_code::normal_closure) {
-            if (self.status_ == status_code::undefined) {
+            if (not self.close_sent_) {
                 uint16_t status = uint16_t(reason);
                 header h{
                     .fin = true,
@@ -233,7 +246,10 @@ namespace g6::ws {
                 status = byteswap(status);
                 h.mask_body(as_writable_bytes(std::span{&status, 1}));
                 co_await net::async_send(self.socket_, std::span{&status, 1});
-                self.status_ = reason;
+                if (self.status_ == status_code::undefined) {
+                    self.status_ = reason;
+                }
+                self.close_sent_ = true;
             }
         }
 
