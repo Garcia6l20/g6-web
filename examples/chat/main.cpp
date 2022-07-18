@@ -8,6 +8,7 @@
 #include <g6/ws/server.hpp>
 
 #include <g6/coro/sync_wait.hpp>
+#include <g6/coro/async_with.hpp>
 
 #include <ranges>
 
@@ -71,7 +72,6 @@ int main(int argc, char **argv) {
     fs::path root_path = ".";
     spdlog::info("server listening at: http://{}", server_endpoint);
 
-    g6::ff_spawner scope{};
     std::list<ws::server_session<net::async_socket> *> all_sessions{};
 
     auto router = router::router{
@@ -108,8 +108,7 @@ int main(int argc, char **argv) {
                                      std::move(hdrs));// gcc bug ? cannot be inplace-constructed
         }),
         http::route::get<R"(/chat)">([&](router::context<http::server_session<net::async_socket>> session,
-                                         router::context<http::server_request<net::async_socket>> request,
-                                         router::context<g6::ff_spawner> scope) -> task<void> {
+                                         router::context<http::server_request<net::async_socket>> request) -> task<void> {
             auto cookies = request->cookies();
             if (not cookies.contains("username")) {
                 co_await net::async_send(*session, http::status::unauthorized);
@@ -120,7 +119,7 @@ int main(int argc, char **argv) {
             spdlog::info("got chat request on {} {}", session->remote_endpoint(), username);
             auto ws_session = co_await web::upgrade_connection(web::proto::ws, *session, *request);
             spdlog::info("connection upgraded...");
-            scope->spawn([](auto session, auto &all_sessions, const std::string username) -> task<void> {
+            spawn([](auto session, auto &all_sessions, const std::string username) -> task<void> {
                 all_sessions.push_front(&session);
                 spdlog::info("websocket connection started...");
                 while (net::has_pending_data(session)) try {
@@ -157,16 +156,16 @@ int main(int argc, char **argv) {
         })};
     sync_wait(
         [&]() -> task<void> {
-            co_await web::async_serve(server, g_stop_source.get_token(), [&] {
-                return [root_path, &router, &scope = scope, us = user_session{}]<typename Session, typename Request>(
+            co_await web::async_serve(server, [&] {
+                return [root_path, &router, us = user_session{}]<typename Session, typename Request>(
                            Session &session, Request request) mutable -> task<void> {
                     std::string body;
                     co_await net::async_recv(request, std::back_inserter(body));
                     co_await router(request.url(), request.method(), std::ref(session), std::ref(request),
-                                    std::ref(scope), std::ref(us), std::ref(body));
+                                    std::ref(us), std::ref(body));
                 };
             });
             spdlog::info("terminated !");
-        }(),
+        }() | async_with(g_stop_source.get_token()),
         async_exec(context, g_stop_source.get_token()));
 }

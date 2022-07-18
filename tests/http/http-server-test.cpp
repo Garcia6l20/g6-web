@@ -5,6 +5,7 @@
 #include <g6/web/context.hpp>
 
 #include <g6/coro/sync_wait.hpp>
+#include <g6/coro/async_with.hpp>
 #include <g6/http/client.hpp>
 #include <g6/http/server.hpp>
 #include <g6/io/context.hpp>
@@ -24,14 +25,14 @@ TEST_CASE("http server stop", "[g6::web::http]") try {
 
     sync_wait(
         [&]() -> task<> {
-            co_await web::async_serve(server, stop_source.get_token(), [&] {
+            co_await web::async_serve(server, [&] {
                 return []<typename Session, typename Request>(Session &session, Request request) -> task<> {
                     FAIL("Should not be reached !");
                     co_return;
                 };
             });
             spdlog::info("server task terminated");
-        }(),
+        }() | async_with(stop_source.get_token()),
         [&]() -> task<> {
             co_await g6::schedule_after(ctx, 50ms);
             stop_source.request_stop();
@@ -57,7 +58,7 @@ TEST_CASE("http-server: basic request/response", "[g6::web::http]") {
             scope_guard _ = [&]() noexcept {//
                 stop.request_stop();
             };
-            co_await web::async_serve(server, stop_server.get_token(), [&] {
+            co_await web::async_serve(server, [&] {
                 return [&]<typename Session, typename Request>(Session &session, Request request) -> task<> {
                     for (auto cookie : request.cookies()) {
                         spdlog::info("cookie: {}={}", cookie.first, cookie.second);
@@ -70,7 +71,7 @@ TEST_CASE("http-server: basic request/response", "[g6::web::http]") {
                     co_await net::async_send(session, std::string_view{"OK !"}, http::status::ok, std::move(hdrs));
                 };
             });
-        }(),
+        }() | async_with(stop_server.get_token()),
         [&]() -> task<> {
             scope_guard _ = [&]() noexcept {//
                 stop_server.request_stop();
@@ -107,7 +108,7 @@ TEST_CASE("http-server: chunked request/response", "[g6::web::http]") {
             scope_guard _ = [&]() noexcept {//
                 stop.request_stop();
             };
-            co_await web::async_serve(server, stop_server.get_token(), [&] {
+            co_await web::async_serve(server, [&] {
                 return [&]<typename Session, typename Request>(Session &session, Request request) -> task<> {
                     std::string body;
                     co_await net::async_recv(request, std::back_inserter(body));
@@ -122,7 +123,7 @@ TEST_CASE("http-server: chunked request/response", "[g6::web::http]") {
                         });
                 };
             });
-        }(),
+        }() | async_with(stop_server.get_token()),
         [&]() -> task<> {
             scope_guard _ = [&]() noexcept {//
                 stop_server.request_stop();

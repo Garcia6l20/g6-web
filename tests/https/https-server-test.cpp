@@ -10,6 +10,7 @@
 #include <g6/ssl/key.hpp>
 
 #include <g6/coro/sync_wait.hpp>
+#include <g6/coro/async_with.hpp>
 #include <g6/scope_guard.hpp>
 
 #include <cert.hpp>
@@ -36,14 +37,14 @@ TEST_CASE("https simple server", "[g6::web::https]") {
 
     sync_wait(
         [&]() -> task<void> {
-            co_await web::async_serve(server, stop_source.get_token(), [&] {
+            co_await web::async_serve(server, [&] {
                 return [&]<typename Session, typename Request>(Session &session, Request request) -> task<void> {
                     std::string body;
                     co_await net::async_recv(request, std::back_inserter(body));
                     co_await net::async_send(session, std::string_view{"OK !"}, http::status::ok);
                 };
             });
-        }(),
+        }() | async_with(stop_source.get_token()),
         [&]() -> task<void> {
             scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
             auto session = co_await net::async_connect(ctx, web::proto::https, server_endpoint,

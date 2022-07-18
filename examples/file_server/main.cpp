@@ -7,6 +7,7 @@
 #include <g6/http/server.hpp>
 
 #include <g6/coro/sync_wait.hpp>
+#include <g6/coro/async_with.hpp>
 
 #include <ranges>
 
@@ -171,7 +172,7 @@ int main(int argc, char **argv) {
     sync_wait(
         [&]() -> task<void> {
             spdlog::info("server listening at: http://{}\n", server_endpoint);
-            co_await web::async_serve(server, g_stop_source.get_token(), [&] {
+            co_await web::async_serve(server, [&] {
                 return [root_path, &router, &context]<typename Session, typename Request>(
                            Session &session, Request request) mutable -> task<void> {
                     std::string body;
@@ -183,6 +184,6 @@ int main(int argc, char **argv) {
                 };
             });
             spdlog::info("terminated !");
-        }(),
+        }() | async_with(g_stop_source.get_token()),
         async_exec(context, g_stop_source.get_token()));
 }

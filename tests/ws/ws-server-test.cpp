@@ -7,6 +7,7 @@
 #include <g6/ws/server.hpp>
 
 #include <g6/coro/sync_wait.hpp>
+#include <g6/coro/async_with.hpp>
 #include <g6/scope_guard.hpp>
 
 using namespace g6;
@@ -89,8 +90,8 @@ TEST_CASE("ws simple server: segmented", "[g6::web::ws]") {
 
     sync_wait(
         [&]() -> task<void> {
-            co_await web::async_serve(server, stop_source.get_token(), [&] {
-                return [&stop_source]<typename Session>(Session session, std::stop_token stop_token) -> task<void> {
+            co_await web::async_serve(server, [&] {
+                return [&stop_source]<typename Session>(Session session) -> task<void> {
                     scope_guard _ = [&]() noexcept {//
                         stop_source.request_stop();
                     };
@@ -107,7 +108,7 @@ TEST_CASE("ws simple server: segmented", "[g6::web::ws]") {
                     spdlog::info("session closed: {}", to_string(session.status()));
                 };
             });
-        }(),
+        }() | async_with(stop_source.get_token()),
         [&]() -> task<void> {
             auto session = co_await net::async_connect(ctx, web::proto::ws, server_endpoint);
             const std::string tx_body = make_random_string(1021);            
@@ -135,8 +136,8 @@ TEST_CASE("ws simple server: segmented/generator like", "[g6::web::ws]") {
 
     sync_wait(
         [&]() -> task<void> {
-            co_await web::async_serve(server, stop_source.get_token(), [&] {
-                return [&stop_source]<typename Session>(Session session, std::stop_token stop_token) -> task<void> {
+            co_await web::async_serve(server, [&] {
+                return [&stop_source]<typename Session>(Session session) -> task<void> {
                     scope_guard _ = [&]() noexcept {//
                         stop_source.request_stop();
                     };
@@ -153,7 +154,7 @@ TEST_CASE("ws simple server: segmented/generator like", "[g6::web::ws]") {
                     spdlog::info("session closed: {}", to_string(session.status()));
                 };
             });
-        }(),
+        }() | async_with(stop_source.get_token()),
         [&]() -> task<void> {
             auto session = co_await net::async_connect(ctx, web::proto::ws, server_endpoint);
             std::string total_body;
