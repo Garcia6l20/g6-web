@@ -89,7 +89,7 @@ namespace g6::ws {
                         co_await net::async_send(socket_, as_bytes(std::span{&status, 1}));
                         connection_.close_sent_ = true;
                     }
-                    throw std::system_error{int(connection_.status_), ws::error_category};
+                    throw std::system_error{ws::make_error_code(connection_.status_)};
                 } else if (header_.opcode == op_code::ping) {
                     // send pong response
                     header pong_h{
