@@ -49,8 +49,10 @@ namespace g6 {
         template<template<typename> typename Server, typename SocketT, typename RequestHandlerBuilder>
         task<void> tag_invoke(tag_t<g6::web::async_serve>, Server<SocketT> &server,
                               RequestHandlerBuilder &&request_handler_builder) {
+            auto stop = co_await this_coro::get_context<std::stop_token>();
             try {
                 while (true) {
+                    spdlog::debug("awaiting for new client...");
                     auto [sock, address] = co_await net::async_accept(server.socket);
                     static_assert(std::same_as<std::decay_t<decltype(sock)>, std::decay_t<decltype(server.socket)>>);
                     auto http_session = server_session<SocketT>{std::move(sock), address};
@@ -60,7 +62,7 @@ namespace g6 {
 
                     if constexpr (requires { co_await handler(std::move(session)); }) {
                         // session handler
-                        spawn(handler(std::move(session)));
+                        spawn(handler(std::move(session)) | async_with(stop.value()));
                     } else {
                         // assume request handler
                         spawn([](auto session, auto request_handler) mutable -> task<void> {
@@ -81,7 +83,7 @@ namespace g6 {
                                 spdlog::error("connection {} error '{}'", session.remote_endpoint(), error.what());
                                 throw;
                             }
-                        }(std::move(session), std::move(handler)));
+                        }(std::move(session), std::move(handler))  | async_with(stop.value()));
                     }
                 }
             } catch (operation_cancelled const &) {
