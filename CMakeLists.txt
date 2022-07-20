@@ -42,6 +42,7 @@ file(GLOB_RECURSE ${PROJECT_NAME}_headers include/)
 add_library(${PROJECT_NAME} ${${PROJECT_NAME}_headers}
   src/uri.cpp
   src/static_parser_handler.cpp
+  src/json.cpp
   ${http_parser_DIR}/http_parser.c
   ${http_parser_DIR}/http_parser.h
   )
