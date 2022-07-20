@@ -20,6 +20,8 @@
 
 namespace g6::ws {
 
+    using sub_protocols = std::vector<std::string_view>;
+
     template<bool is_server, typename Socket>
     class connection;
 

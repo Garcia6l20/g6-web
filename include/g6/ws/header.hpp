@@ -107,7 +107,7 @@ namespace g6::ws {
             }
         }
 
-        task<> send(auto &socket) {
+        task<size_t> send(auto &socket) {
             std::array<std::byte, 8> buffer;
             buffer[0] = std::byte(fin << 7u) | std::byte(rsv1 << 6u) | std::byte(rsv2 << 5u) | std::byte(rsv3 << 4u)
                       | (std::byte(opcode) & std::byte(0b0000'1111));
@@ -129,7 +129,7 @@ namespace g6::ws {
                 std::memcpy(&buffer[offset], &masking_key, sizeof(masking_key));
                 offset += sizeof(masking_key);
             }
-            co_await net::async_send(socket, std::span{buffer.data(), offset});
+            co_return co_await net::async_send(socket, std::span{buffer.data(), offset});
         }
 
         void serialize(std::span<std::byte> buffer) {

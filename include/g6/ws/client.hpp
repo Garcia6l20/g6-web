@@ -50,7 +50,7 @@ namespace g6 {
         template<typename Context, typename Socket>
         task<ws::client<Context, Socket>>
         tag_invoke(tag_t<web::upgrade_connection>, http::client<Context, Socket> &http_client,
-                   std::type_identity<ws::client<Context, Socket>>, std::string_view path = "/") {
+                   std::type_identity<ws::client<Context, Socket>>, std::string_view path = "/", ws::sub_protocols protos = {}) {
             const auto key_base = ws::client<Context, Socket>::random_string(16);
             std::string hash = crypto::base64::encode(key_base);
             spdlog::debug("ws::upgrade: key: {}, base64: {}", key_base, hash);
@@ -60,7 +60,13 @@ namespace g6 {
                 {"Sec-WebSocket-Key", hash},
                 {"Sec-WebSocket-Version", std::to_string(ws::client<Context, Socket>::max_ws_version_)},
             };
-            auto response = co_await net::async_send(http_client, std::string_view{""}, path, http::method::get, std::move(hdrs));
+            if (not protos.empty()) {
+                for (auto const &p : protos) {
+                    hdrs.insert({"Sec-WebSocket-Protocol", std::string{p}});
+                }
+            }
+            auto response =
+                co_await net::async_send(http_client, std::string_view{""}, path, http::method::get, std::move(hdrs));
             std::string body;
             co_await net::async_recv(response, std::back_inserter(body));
             if (response.status_code() != http::status::switching_protocols) {
@@ -75,19 +81,20 @@ namespace g6 {
         template<typename Context>
         task<ws::client<Context, net::async_socket>>
         tag_invoke(tag_t<net::async_connect>, Context &context, g6::web::proto::ws_ const &,
-                   const net::ip_endpoint &endpoint, std::string_view path = "/") {
+                   const net::ip_endpoint &endpoint, std::string_view path = "/", ws::sub_protocols protos = {}) {
             auto http_client = co_await net::async_connect(context, web::proto::http, endpoint);
             co_return co_await web::upgrade_connection(
-                http_client, std::type_identity<g6::ws::client<Context, net::async_socket>>{}, path);
+                http_client, std::type_identity<g6::ws::client<Context, net::async_socket>>{}, path, std::move(protos));
         }
 
         template<typename Context>
         task<ws::client<Context, ssl::async_socket>>
         tag_invoke(tag_t<net::async_connect>, Context &context, g6::web::proto::wss_ const &,
-                   const net::ip_endpoint &endpoint, std::string_view path = "/", ssl::verify_flags verify_flags = ssl::verify_flags::none) {
+                   const net::ip_endpoint &endpoint, std::string_view path = "/",
+                   ssl::verify_flags verify_flags = ssl::verify_flags::none, ws::sub_protocols protos = {}) {
             auto http_client = co_await net::async_connect(context, web::proto::https, endpoint, verify_flags);
             co_return co_await web::upgrade_connection(
-                http_client, std::type_identity<g6::ws::client<Context, ssl::async_socket>>{}, path);
+                http_client, std::type_identity<g6::ws::client<Context, ssl::async_socket>>{}, path, std::move(protos));
         }
     }// namespace net
 }// namespace g6
