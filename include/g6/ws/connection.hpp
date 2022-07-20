@@ -6,6 +6,7 @@
 #include <g6/coro/task.hpp>
 
 #include <g6/algoritm>
+#include <g6/logging.hpp>
 
 #include <algorithm>
 #include <bit>
@@ -63,7 +64,7 @@ namespace g6::ws {
                 header_ = co_await header::receive(socket_);
                 current_payload_offset_ = 0;
                 remaining_size = header_.payload_length - current_payload_offset_;
-                spdlog::debug("opcode: {}, fin: {}, len: {}", to_string(header_.opcode), header_.fin,
+                connection_.debug("opcode: {}, fin: {}, len: {}", to_string(header_.opcode), header_.fin,
                               header_.payload_length);
                 if (header_.opcode == op_code::connection_close) {
                     current_payload_offset_ = header_.payload_length;
@@ -115,7 +116,7 @@ namespace g6::ws {
 
             current_payload_offset_ += rx_size;
 
-            spdlog::debug("received: {} bytes ({}/{})", rx_size, current_payload_offset_, header_.payload_length);
+            connection_.debug("received: {} bytes ({}/{})", rx_size, current_payload_offset_, header_.payload_length);
 
             co_return rx_size;
         }
@@ -162,7 +163,7 @@ namespace g6::ws {
                     msg.header_.mask_body(masked_data);
                     size_t tx_size = co_await net::async_send(msg.socket_, std::span{masked_data.data(), tmp_size});
                     remaining_size -= tx_size;
-                    spdlog::debug("sent: {} bytes ({}/{})", tx_size, data.size() - remaining_size, data.size());
+                    msg.connection_.debug("sent: {} bytes ({}/{})", tx_size, data.size() - remaining_size, data.size());
                 }
                 co_return data.size();
             } else {
@@ -181,7 +182,7 @@ namespace g6::ws {
     };
 
     template<bool is_server, typename Socket>
-    class connection {
+    class connection : private logged<"g6::ws::connection"> {
         template<bool, typename>
         friend class rx_message;
 
