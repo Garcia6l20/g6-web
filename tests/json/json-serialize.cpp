@@ -63,3 +63,42 @@ TEST_CASE("json serilization", "[g6::web::json]") {//
         }
     }
 }
+
+TEST_CASE("json serilization - special types", "[g6::web::json]") {//
+    spdlog::set_level(spdlog::level::trace);
+    SECTION("has_value") {
+        struct test_opt {
+            G6_JSON_FIELD(std::optional<double>, opt_dbl);
+            G6_JSON_FIELD(double, man_dbl);
+        };
+        auto data = json::serialize(test_opt{
+            .opt_dbl = 42.2,
+            .man_dbl = 43.3
+        });
+        spdlog::debug("test_opt: {}", data);
+        auto back = json::deserialize<test_opt>(std::move(data));
+        REQUIRE(back.opt_dbl == 42.2);
+        REQUIRE(back.man_dbl == 43.3);
+    }
+    SECTION("dont has_value") {
+        struct test_opt {
+            G6_JSON_FIELD(std::optional<double>, opt_dbl);
+            G6_JSON_FIELD(double, man_dbl);
+        };
+        auto data = json::serialize(test_opt{
+            .man_dbl = 43.3
+        });
+        spdlog::debug("test_opt: {}", data);
+        auto back = json::deserialize<test_opt>(std::move(data));
+        REQUIRE(not back.opt_dbl->has_value());
+        REQUIRE(back.man_dbl == 43.3);
+    }
+    SECTION("missing field") {
+        struct test_opt {
+            G6_JSON_FIELD(std::optional<double>, opt_dbl);
+            G6_JSON_FIELD(double, man_dbl);
+        };
+        REQUIRE_NOTHROW(json::deserialize<test_opt>(R"({"man_dbl":43.3})"));
+        REQUIRE_THROWS_AS(json::deserialize<test_opt>(R"({"opt_dbl":43.3})"), json::missing_field_error);
+    }
+}
