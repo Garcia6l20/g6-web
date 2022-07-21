@@ -13,9 +13,9 @@ namespace g6::json {
     using number = double;
     using string = std::string;
 
-    using value = poly::var<boolean, number, string>;
-    using list = poly::vec<boolean, number, string>;
-    using object = poly::obj<boolean, number, string>;
+    using value = poly::var<number, boolean, string>;
+    using list = poly::vec<number, boolean, string>;
+    using object = poly::obj<number, boolean, string>;
     using null_t = poly::none;
     constexpr null_t null{};
 
