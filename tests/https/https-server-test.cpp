@@ -22,7 +22,7 @@ TEST_CASE("https simple server", "[g6::web::https]") {
     spdlog::set_level(spdlog::level::debug);
 
     web::context ctx{};
-    std::stop_source stop_source{};
+    std::stop_source stop_server, stop_context;
     const ssl::certificate certificate{cert};
     const ssl::private_key private_key{key};
 
@@ -37,6 +37,9 @@ TEST_CASE("https simple server", "[g6::web::https]") {
 
     sync_wait(
         [&]() -> task<void> {
+            scope_guard _ = [&] {
+                stop_context.request_stop();
+            };
             co_await web::async_serve(server, [&] {
                 return [&]<typename Session, typename Request>(Session &session, Request request) -> task<void> {
                     std::string body;
@@ -44,9 +47,9 @@ TEST_CASE("https simple server", "[g6::web::https]") {
                     co_await net::async_send(session, std::string_view{"OK !"}, http::status::ok);
                 };
             });
-        }() | async_with(stop_source.get_token()),
+        }() | async_with(stop_server.get_token()),
         [&]() -> task<void> {
-            scope_guard _ = [&]() noexcept { stop_source.request_stop(); };
+            scope_guard _ = [&]() noexcept { stop_server.request_stop(); };
             auto session = co_await net::async_connect(ctx, web::proto::https, server_endpoint,
                                                        ssl::verify_flags::allow_untrusted);
             auto response =
@@ -58,5 +61,5 @@ TEST_CASE("https simple server", "[g6::web::https]") {
             REQUIRE(response.status_code() == http::status::ok);
             REQUIRE(body == "OK !");
         }(),
-        async_exec(ctx, stop_source.get_token()));
+        async_exec(ctx, stop_context.get_token()));
 }

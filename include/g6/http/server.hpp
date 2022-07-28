@@ -1,5 +1,7 @@
 #pragma once
 
+#include <g6/web/context.hpp>
+
 #include <g6/http/http.hpp>
 #include <g6/http/session.hpp>
 
@@ -11,13 +13,11 @@
 #include <g6/web/web_cpo.hpp>
 
 #include <g6/coro/spawn.hpp>
+#include <g6/coro/async_with.hpp>
 
 #include <spdlog/spdlog.h>
 
 namespace g6 {
-    namespace web {
-        class context;
-    }
     namespace http {
 
         template<template<typename> typename Server, typename SocketT, typename RequestHandlerBuilder>

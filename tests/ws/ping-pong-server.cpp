@@ -27,8 +27,8 @@ int main(int, char **) {
 
     sync_wait(
         [&]() -> task<void> {
-            co_await web::async_serve(server, stop_source.get_token(), [&] {
-                return [&]<typename Session>(Session session, std::stop_token) -> task<void> {
+            co_await web::async_serve(server, [&] {
+                return [&]<typename Session>(Session session) -> task<void> {
                     std::stop_source session_stop;
                     co_await when_all(
                         [&]() -> task<> {
