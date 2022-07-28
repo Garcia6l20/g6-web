@@ -63,7 +63,7 @@ namespace g6::json {
             };
             auto tup = tl::to_tuple(std::forward<T>(obj));
             [&]<size_t... I>(std::index_sequence<I...>) { (emplace_one(std::move(std::get<I>(tup))), ...); }
-            (std::make_index_sequence<tl::num_aggregate_unique_fields_v<std::decay_t<T>>>());
+            (std::make_index_sequence<tl::num_aggregate_unique_fields<std::decay_t<T>>>());
             return result;
         }
 
@@ -84,7 +84,7 @@ namespace g6::json {
                         if (val.contains(key)) { value = unload_value<U>(val.at(key)); }
                     };
                     [&]<size_t... I>(std::index_sequence<I...>) { (emplace_one(std::get<I>(tup)), ...); }
-                    (std::make_index_sequence<tl::num_aggregate_unique_fields_v<std::decay_t<T>>>());
+                    (std::make_index_sequence<tl::num_aggregate_unique_fields<std::decay_t<T>>>());
                     return std::make_from_tuple<T>(std::move(tup));
                 } else if constexpr (tl::decays_to<V, list> and std::ranges::range<std::decay_t<T>>) {//
                     auto rng = T{};
@@ -116,7 +116,7 @@ namespace g6::json {
                 }
             };
             [&]<size_t... I>(std::index_sequence<I...>) { (emplace_one(std::get<I>(tup)), ...); }
-            (std::make_index_sequence<tl::num_aggregate_unique_fields_v<std::decay_t<T>>>());
+            (std::make_index_sequence<tl::num_aggregate_unique_fields<std::decay_t<T>>>());
             return std::make_from_tuple<T>(std::move(tup));
         };
     }// namespace details
