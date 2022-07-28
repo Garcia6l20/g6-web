@@ -3,6 +3,8 @@
 
 #include <g6/json/serialize.hpp>
 
+#include <g6/enum.hpp>
+
 using namespace g6;
 
 struct test_struct_1 {
