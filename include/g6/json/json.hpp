@@ -55,6 +55,7 @@ namespace g6::json {
                 ++begin;
                 result[std::move(key)] = load(begin, end);
                 if (*begin == '}') {
+                    ++begin;
                     break;
                 }
             }

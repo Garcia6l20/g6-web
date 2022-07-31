@@ -52,4 +52,7 @@ TEST_CASE("json::bug_fixes", "[g6][json][bug_fixes]") {
         REQUIRE(size(obj.at("0").get<json::object>()) == 0);
         REQUIRE(obj.at("length") == 1.);
     }
+    SECTION("nested object") {
+        auto result = json::load(R"([{"key":{"key":"bs.modal","id":1},"uidEvent":17}])");
+    }
 }
