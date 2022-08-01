@@ -3,6 +3,7 @@
 #include <g6/ws/header.hpp>
 
 #include <g6/coro/sync_wait.hpp>
+#include <g6/coro/async_mutex.hpp>
 #include <g6/coro/task.hpp>
 
 #include <g6/algoritm>
@@ -59,6 +60,8 @@ namespace g6::ws {
         tag_invoke<>(tag_t<net::async_recv>, connection<is_server, Socket> &conn, std::stop_token stop);
 
         task<size_t> async_recv(std::span<std::byte> data) {
+            auto guard = co_await async_lock(connection_.rx_mux_);
+
             ssize_t remaining_size = header_.payload_length - current_payload_offset_;
             if (remaining_size <= 0) {
                 assert(!header_.fin);
@@ -198,6 +201,9 @@ namespace g6::ws {
         status_code status_ = status_code::undefined;
         bool close_sent_ = false;
 
+        async_mutex tx_mux_;
+        async_mutex rx_mux_;
+
     public:
         static constexpr uint32_t max_ws_version_ = 13;
         auto const &remote_endpoint() const noexcept { return remote_endpoint_; }
@@ -217,25 +223,30 @@ namespace g6::ws {
         friend task<rx_message<is_server_, Socket_>> tag_invoke(tag_t<net::async_recv>,
                                                                 connection<is_server_, Socket_> &conn, std::stop_token);
 
-        friend task<size_t> tag_invoke(tag_t<net::async_send>, connection &conn, std::span<std::byte const> data) {
+        friend task<async_guard> tag_invoke(tag_t<net::async_send>, connection &conn, std::span<std::byte const> data) {
+            auto guard = co_await async_lock(conn.tx_mux_);
             tx_message<is_server, Socket> msg{conn};
-            co_return co_await net::async_send(msg, data, true);
+            co_await net::async_send(msg, data, true);
+            co_return std::move(guard);
         }
 
         template<typename Job>
-        friend task<> tag_invoke(tag_t<net::async_send>, connection &conn, Job &&job) requires
+        friend task<async_guard> tag_invoke(tag_t<net::async_send>, connection &conn, Job &&job) requires
             requires(tx_message<is_server, Socket> &msg) {
             { job(msg) } -> std::same_as<task<>>;
         }
         {
+            auto guard = co_await async_lock(conn.tx_mux_);
             tx_message<is_server, Socket> msg{conn};
             co_await job(msg);
             co_await net::async_close(msg);
+            co_return std::move(guard);
         }
 
         friend task<> tag_invoke(tag_t<net::async_close>, connection &self,
                                  status_code reason = status_code::normal_closure) {
             if (not self.close_sent_) {
+                auto guard = co_await async_lock(self.tx_mux_);
                 uint16_t status = uint16_t(reason);
                 header h{
                     .fin = true,
