@@ -186,8 +186,23 @@ namespace g6::ws {
         }
     };
 
+    namespace details {
+        template <bool is_server>
+        struct connection_log_name;
+
+        template <>
+        struct connection_log_name<true> {
+            static constexpr auto value = const_str{"g6::ws::server_conn"};
+        };
+
+        template <>
+        struct connection_log_name<false> {
+            static constexpr auto value = const_str{"g6::ws::client_conn"};
+        };
+    }
+
     template<bool is_server, typename Socket>
-    class connection : private logged<"g6::ws::connection"> {
+    class connection : private logged<details::connection_log_name<is_server>::value> {
         template<bool, typename>
         friend class rx_message;
 
