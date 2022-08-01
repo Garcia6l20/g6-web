@@ -40,17 +40,25 @@ namespace g6::json {
     template<typename IterT>
     value parse_object(IterT &begin, const IterT &end) {
         object result;
-        for (; begin != end && *begin != '}'; ++begin) {
-            if (!isgraph(*begin)) continue;
-            begin = it_find(begin, end, '"');
-            if (begin == end) { throw error("syntax error"); }
+        if (*begin == '}') {
+            // empty object
             ++begin;
-            std::string key = parse_string(begin, end);
-            begin = it_find(begin, end, ':');
-            if (begin == end) { throw error("syntax error"); }
-            ++begin;
-            result[std::move(key)] = load(begin, end);
-            if (*begin == '}') break;
+        } else {
+            for (; *begin != '}' and begin != end ; ++begin) {
+                if (!isgraph(*begin)) continue;
+                begin = it_find(begin, end, '"');
+                if (begin == end) { throw error("syntax error"); }
+                ++begin;
+                std::string key = parse_string(begin, end);
+                begin = it_find(begin, end, ':');
+                if (begin == end) { throw error("syntax error"); }
+                ++begin;
+                result[std::move(key)] = load(begin, end);
+                if (*begin == '}') {
+                    ++begin;
+                    break;
+                }
+            }
         }
         return value{std::move(result)};
     }
@@ -58,7 +66,7 @@ namespace g6::json {
     template<typename IterT>
     value parse_array(IterT &begin, const IterT &end) {
         list result;
-        for (; *begin != ']' && begin != end; ++begin) {
+        for (; *begin != ']' and begin != end; ++begin) {
             if (!isgraph(*begin)) continue;
             if (*begin == ',') continue;
             result.push_back(load(begin, end));

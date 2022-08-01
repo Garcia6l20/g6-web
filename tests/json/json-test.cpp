@@ -40,3 +40,19 @@ TEST_CASE("json loading", "[g6::web::json]") {//
         REQUIRE_THROWS_AS(json::load(R"({"value"42})"), json::error);
     }
 }
+
+TEST_CASE("json::bug_fixes", "[g6][json][bug_fixes]") {
+    SECTION("empty object") {
+        auto result = json::load(R"([3,"79bO5qG8zczAET8hhd6t9f0qpeDmbnx7",{"0":{},"length":1}])").get<json::list>();
+        REQUIRE(result.at(0) == 3.);
+        REQUIRE(result.at(1) == "79bO5qG8zczAET8hhd6t9f0qpeDmbnx7");
+        REQUIRE(result.at(2).is<json::object>());
+        auto const& obj = result.at(2).get<json::object>();
+        REQUIRE(obj.at("0").is<json::object>());
+        REQUIRE(size(obj.at("0").get<json::object>()) == 0);
+        REQUIRE(obj.at("length") == 1.);
+    }
+    SECTION("nested object") {
+        auto result = json::load(R"([{"key":{"key":"bs.modal","id":1},"uidEvent":17}])");
+    }
+}
