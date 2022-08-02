@@ -30,7 +30,7 @@ TEST_CASE("ws simple server: segmented", "[g6::web::ws]") {
     spdlog::set_level(spdlog::level::debug);
 
     web::context ctx{};
-    std::stop_source stop_source{};
+    std::stop_source stop, stop_ctx;
 
     auto server = web::make_server(ctx, web::proto::ws, *from_string<net::ip_endpoint>("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
@@ -39,11 +39,11 @@ TEST_CASE("ws simple server: segmented", "[g6::web::ws]") {
 
     sync_wait(
         [&]() -> task<void> {
+            scope_guard _ = [&]() noexcept {//
+                stop_ctx.request_stop();
+            };
             co_await web::async_serve(server, [&] {
-                return [&stop_source]<typename Session>(Session session) -> task<void> {
-                    scope_guard _ = [&]() noexcept {//
-                        stop_source.request_stop();
-                    };
+                return []<typename Session>(Session session) -> task<void> {
                     std::string rx_body;
                     while (net::has_pending_data(session)) {
                         auto message = co_await net::async_recv(session);
@@ -57,8 +57,11 @@ TEST_CASE("ws simple server: segmented", "[g6::web::ws]") {
                     spdlog::info("session closed: {}", to_string(session.status()));
                 };
             });
-        }() | async_with(stop_source.get_token()),
+        }() | async_with(stop.get_token()),
         [&]() -> task<void> {
+            scope_guard _ = [&]() noexcept {//
+                stop.request_stop();
+            };
             auto session = co_await net::async_connect(ctx, web::proto::ws, server_endpoint);
             const std::string tx_body = make_random_string(1021);
             co_await net::async_send(session, tx_body);
@@ -69,14 +72,14 @@ TEST_CASE("ws simple server: segmented", "[g6::web::ws]") {
             spdlog::info("client rx body: {}", rx_body);
             REQUIRE(rx_body == tx_body);
         }(),
-        async_exec(ctx, stop_source.get_token()));
+        async_exec(ctx, stop_ctx.get_token()));
 }
 
 TEST_CASE("ws simple server: segmented/generator like", "[g6::web::ws]") {
     spdlog::set_level(spdlog::level::debug);
 
     web::context ctx{};
-    std::stop_source stop_source{};
+    std::stop_source stop, stop_ctx;
 
     auto server = web::make_server(ctx, web::proto::ws, *from_string<net::ip_endpoint>("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
@@ -85,11 +88,11 @@ TEST_CASE("ws simple server: segmented/generator like", "[g6::web::ws]") {
 
     sync_wait(
         [&]() -> task<void> {
+            scope_guard _ = [&]() noexcept {//
+                stop_ctx.request_stop();
+            };
             co_await web::async_serve(server, [&] {
-                return [&stop_source]<typename Session>(Session session) -> task<void> {
-                    scope_guard _ = [&]() noexcept {//
-                        stop_source.request_stop();
-                    };
+                return [&]<typename Session>(Session session) -> task<void> {
                     std::string rx_body;
                     while (net::has_pending_data(session)) {
                         auto message = co_await net::async_recv(session);
@@ -103,8 +106,12 @@ TEST_CASE("ws simple server: segmented/generator like", "[g6::web::ws]") {
                     spdlog::info("session closed: {}", to_string(session.status()));
                 };
             });
-        }() | async_with(stop_source.get_token()),
+        }() | async_with(stop.get_token()),
         [&]() -> task<void> {
+            scope_guard _ = [&]() noexcept {//
+                spdlog::info("requesting stop...");
+                stop.request_stop();
+            };
             auto session = co_await net::async_connect(ctx, web::proto::ws, server_endpoint);
             std::string total_body;
             co_await net::async_send(session, [&](auto &message) -> task<> {
@@ -122,7 +129,7 @@ TEST_CASE("ws simple server: segmented/generator like", "[g6::web::ws]") {
             spdlog::info("client rx body: {}", rx_body);
             REQUIRE(rx_body == total_body);
         }(),
-        async_exec(ctx, stop_source.get_token()));
+        async_exec(ctx, stop_ctx.get_token()));
 }
 
 TEST_CASE("g6::ws concurrent", "[g6::web::ws]") {
