@@ -11,6 +11,7 @@
 
 #include <g6/net/ip_address.hpp>
 #include <g6/net/ip_endpoint.hpp>
+#include <g6/byteswap.hpp>
 
 #include <bit>
 #include <charconv>
@@ -23,18 +24,6 @@
 #if G6_OS_LINUX
 #include <netdb.h>
 #endif
-
-namespace g6 {
-    template<typename T>
-    T byteswap(T const &input) {
-        std::byte src[sizeof(T)];
-        std::memcpy(src, &input, sizeof(T));
-
-        std::byte dst[sizeof(T)];
-        for (size_t ii = 0; ii < sizeof(T); ++ii) { dst[ii] = src[sizeof(T) - ii - 1]; }
-        return std::bit_cast<T>(dst);
-    }
-}// namespace g6
 
 namespace g6::web {
     class uri {
