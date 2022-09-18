@@ -27,13 +27,8 @@ if(NOT TARGET g6::net)
   FetchContent_makeAvailable(g6-net-fetch)
 endif()
 
-#
-# nodejs/http_parser
-#
-set(http_parser_DIR ${CMAKE_CURRENT_LIST_DIR}/external/http-parser)
-
 project(g6-web
-  LANGUAGES CXX C
+  LANGUAGES CXX
   VERSION 0.0.1
   )
 
@@ -41,10 +36,8 @@ file(GLOB_RECURSE ${PROJECT_NAME}_headers include/)
 
 add_library(${PROJECT_NAME} ${${PROJECT_NAME}_headers}
   src/uri.cpp
-  src/static_parser_handler.cpp
   src/json.cpp
-  ${http_parser_DIR}/http_parser.c
-  ${http_parser_DIR}/http_parser.h
+  src/http_parser.cpp
   )
 set_target_properties(${PROJECT_NAME} PROPERTIES
   EXPORT_NAME web)

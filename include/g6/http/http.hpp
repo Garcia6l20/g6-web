@@ -1,5 +1,7 @@
 #pragma once
 
+#include <g6/strutils.hpp>
+
 #include <map>
 #include <string>
 #include <system_error>
@@ -68,15 +70,14 @@ namespace g6::http {
     XX(510, not_extended, Not Extended)                                                                                \
     XX(511, network_authentication_required, Network Authentication Required)
 
-    enum class status
-    {
+    enum class status {
 #define XX(num, name, string) name = num,
         G6_HTTP_STATUS_MAP(XX)
 #undef XX
     };
-    inline constexpr const char* to_string(status s) noexcept {
-#define XX(num, name, string) \
-        if (s == status::name) { return #string; }
+    inline constexpr const char *to_string(status s) noexcept {
+#define XX(num, name, string)                                                                                          \
+    if (s == status::name) { return #string; }
         G6_HTTP_STATUS_MAP(XX)
 #undef XX
         return "Unknown status";
@@ -127,21 +128,54 @@ namespace g6::http {
     /* icecast */                                                                                                      \
     XX(33, source, SOURCE)
 
-    enum class method
-    {
+    enum class method {
 #define XX(num, name, string) name = num,
         G6_HTTP_METHOD_MAP(XX)
 #undef XX
     };
-    inline constexpr const char* to_string(method m) noexcept {
-#define XX(num, name, string) \
-        if (m == method::name) { return #string; }
+    inline constexpr const char *to_string(method m) noexcept {
+#define XX(num, name, string)                                                                                          \
+    if (m == method::name) { return #string; }
         G6_HTTP_METHOD_MAP(XX)
 #undef XX
         return "Unknown method";
     }
 
-    using headers = std::multimap<std::string, std::string>;
+    class headers : public std::multimap<istring, std::string> {
+        using base = std::multimap<istring, std::string>;
+
+    public:
+        using base::base;
+
+        class header_values {
+        public:
+            using iterator = headers::iterator;
+            using range_type = decltype(std::ranges::subrange(std::declval<iterator>(), std::declval<iterator>())
+                                        | std::views::values);
+
+            header_values(std::pair<iterator, iterator> rng) noexcept
+                : rng_{rng}, view_{std::ranges::subrange(rng_.first, rng_.second) | std::views::values} {}
+
+            auto size() const noexcept { return std::ranges::distance(view_); }
+
+            auto &operator[](size_t index) {
+                if (index > size()) { throw std::out_of_range("no such index"); }
+                auto it = view_.begin();
+                std::ranges::advance(it, index);
+                return *it;
+            }
+
+            auto begin() const noexcept { return view_.begin(); }
+
+            auto end() const noexcept { return view_.end(); }
+
+        private:
+            std::pair<iterator, iterator> rng_;
+            range_type view_;
+        };
+
+        header_values values(istring const &field) noexcept { return header_values{equal_range(field)}; }
+    };
 
     inline struct error_category_t final : std::error_category {
         [[nodiscard]] const char *name() const noexcept final { return "http"; }

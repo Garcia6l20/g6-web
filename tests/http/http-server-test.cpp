@@ -87,7 +87,7 @@ TEST_CASE("http-server: basic request/response", "[g6::web::http]") {
                 spdlog::info("set-cookie: {}", set_cookie);
             }
             spdlog::info("body: {}", body);
-            REQUIRE(response.status_code() == http::status::ok);
+            REQUIRE(response.get_status() == http::status::ok);
             REQUIRE(body == "OK !");
         }(),
         g6::async_exec(ctx, stop.get_token()));
@@ -140,7 +140,7 @@ TEST_CASE("http-server: chunked request/response", "[g6::web::http]") {
             std::string body;
             co_await net::async_recv(response, std::back_inserter(body));
             spdlog::info("body: {}", body);
-            REQUIRE(response.status_code() == http::status::ok);
+            REQUIRE(response.get_status() == http::status::ok);
             REQUIRE(body == "Ola el mundo !!");
         }(),
         g6::async_exec(ctx, stop.get_token()));
