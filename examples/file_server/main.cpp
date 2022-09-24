@@ -165,7 +165,7 @@ int main(int argc, char **argv) {
         }),
         router::on<R"(.*)">([](router::context<http::server_session<net::async_socket>> session,
                                router::context<http::server_request<net::async_socket>> request) -> task<void> {
-            spdlog::info("unhandled url: {}", request->url());
+            spdlog::info("unhandled url: {}", request->get_path());
             constexpr std::string_view not_found = R"(<div><h6>Not found</h6></div>)";
             co_await net::async_send(*session, not_found, http::status::not_found);
         })};
@@ -178,8 +178,8 @@ int main(int argc, char **argv) {
                     std::string body;
                     co_await net::async_recv(request, std::back_inserter(body));// flush unused body
 
-                    spdlog::info("url: {}", request.url());
-                    co_await router(request.url(), request.method(), std::ref(request), std::ref(session));
+                    spdlog::info("url: {}", request.get_path());
+                    co_await router(request.get_path(), request.get_method(), std::ref(request), std::ref(session));
                     spdlog::info("done");
                 };
             });

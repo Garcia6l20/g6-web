@@ -48,9 +48,9 @@ namespace g6 {
 #ifdef G6_WEB_DEBUG
             for (auto &h : request.headers()) { spdlog::debug("{} -> {}", h.first, h.second); }
 #endif
-            auto con_header = request.header("Connection");
-            auto upgrade_header = request.header("Upgrade");
-            bool upgrade = con_header.find("Upgrade") != std::string::npos;
+            auto con_header = request.get_header("Connection").value();
+            auto upgrade_header = request.get_header("Upgrade").value();
+            bool upgrade = iequals(con_header, "upgrade");
             bool websocket = upgrade_header == "websocket";
 
             if (not upgrade or not websocket) {
@@ -60,10 +60,10 @@ namespace g6 {
             }
 
             uint32_t ws_version = ws::server_session<Socket>::max_ws_version_;
-            if (auto const &version = request.header("Sec-WebSocket-Version"); not version.empty()) {
-                std::from_chars(version.data(), version.data() + version.size(), ws_version);
+            if (auto version = request.get_header("Sec-WebSocket-Version"); version) {
+                std::from_chars(version->data(), version->data() + version->size(), ws_version);
             }
-            auto &accept = request.header("Sec-WebSocket-Key");
+            std::string accept{request.get_header("Sec-WebSocket-Key").value()};
             accept = crypto::base64::encode(crypto::sha1::hash(accept, "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"));
 #ifdef G6_WEB_DEBUG
             spdlog::debug("accept-hash: {}", accept);

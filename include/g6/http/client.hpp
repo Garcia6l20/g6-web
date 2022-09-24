@@ -122,7 +122,7 @@ namespace g6::net {
     template<typename Context>
     task<http::client<Context, ssl::async_socket>>
     tag_invoke(tag_t<net::async_connect>, Context &context, const g6::web::proto::https_ &,
-               const net::ip_endpoint &endpoint, ssl::verify_flags verify_flags) {
+               const net::ip_endpoint &endpoint, ssl::verify_flags verify_flags = ssl::verify_flags::none) {
         auto sock = net::open_socket(context, ssl::tcp_client);
         sock.bind(net::ipv4_endpoint{});// TODO handle this for windows
         sock.host_name("localhost");

@@ -8,6 +8,7 @@
 
 #include <g6/algoritm>
 #include <g6/logging.hpp>
+#include <g6/byteswap.hpp>
 
 #include <algorithm>
 #include <bit>
@@ -168,7 +169,6 @@ namespace g6::ws {
                     msg.header_.mask_body(masked_data);
                     size_t tx_size = co_await net::async_send(msg.socket_, std::span{masked_data.data(), tmp_size});
                     remaining_size -= tx_size;
-                    msg.connection_.debug("sent: {} bytes ({}/{})", tx_size, data.size() - remaining_size, data.size());
                 }
                 co_return data.size();
             } else {

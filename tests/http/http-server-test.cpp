@@ -17,7 +17,8 @@ using namespace std::chrono_literals;
 TEST_CASE("http server stop", "[g6::web::http]") try {
     spdlog::set_level(spdlog::level::debug);
     web::context ctx{};
-    std::stop_source stop_source{};
+    std::stop_source stop{};
+    std::stop_source stop_ctx{};
 
     auto server = web::make_server(ctx, web::proto::http, *from_string<net::ip_endpoint>("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
@@ -25,6 +26,7 @@ TEST_CASE("http server stop", "[g6::web::http]") try {
 
     sync_wait(
         [&]() -> task<> {
+            scope_guard _ = [&] { stop_ctx.request_stop(); };
             co_await web::async_serve(server, [&] {
                 return []<typename Session, typename Request>(Session &session, Request request) -> task<> {
                     FAIL("Should not be reached !");
@@ -32,13 +34,13 @@ TEST_CASE("http server stop", "[g6::web::http]") try {
                 };
             });
             spdlog::info("server task terminated");
-        }() | async_with(stop_source.get_token()),
+        }() | async_with(stop.get_token()),
         [&]() -> task<> {
             co_await g6::schedule_after(ctx, 50ms);
-            stop_source.request_stop();
+            stop.request_stop();
             spdlog::info("stop requested");
         }(),
-        g6::async_exec(ctx, stop_source.get_token()));
+        g6::async_exec(ctx, stop_ctx.get_token()));
 
     spdlog::info("done");
 } catch (std::exception const &error) { FAIL(error.what()); }

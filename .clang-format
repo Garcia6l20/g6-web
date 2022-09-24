@@ -16,6 +16,9 @@ AllowShortLoopsOnASingleLine: true
 AlwaysBreakAfterReturnType: None
 AlwaysBreakTemplateDeclarations: Yes
 BreakBeforeBraces: Custom
+IndentRequiresClause: true
+IndentRequires: true
+RequiresClausePosition: OwnLine
 BraceWrapping:
   AfterCaseLabel: false
   AfterClass: false

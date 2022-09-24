@@ -1,6 +1,7 @@
 #include <spdlog/spdlog.h>
 
 #include <g6/web/context.hpp>
+#include <g6/web/uri.hpp>
 
 #include <g6/ws/client.hpp>
 #include <g6/ws/server.hpp>

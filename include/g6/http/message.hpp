@@ -5,6 +5,7 @@
 #pragma once
 
 #include <g6/http/parser.hpp>
+#include <g6/net/net_cpo.hpp>
 
 #include <fmt/format.h>
 

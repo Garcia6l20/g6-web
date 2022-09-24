@@ -69,8 +69,8 @@ namespace g6 {
                 co_await net::async_send(http_client, std::string_view{""}, path, http::method::get, std::move(hdrs));
             std::string body;
             co_await net::async_recv(response, std::back_inserter(body));
-            if (response.status_code() != http::status::switching_protocols) {
-                throw std::system_error(int(response.status_code()), http::error_category, "upgrade_connection");
+            if (response.get_status() != http::status::switching_protocols) {
+                throw std::system_error(int(response.get_status()), http::error_category, "upgrade_connection");
             }
             co_return ws::client{web::get_context(http_client), std::move(web::get_socket(http_client)),
                                  http_client.remote_endpoint()};

@@ -5,6 +5,7 @@
 #include <map>
 #include <string>
 #include <system_error>
+#include <concepts>
 
 namespace g6::http {
 

@@ -58,7 +58,7 @@ TEST_CASE("https simple server", "[g6::web::https]") {
             std::string body;
             co_await net::async_recv(response, std::back_inserter(body));
             spdlog::info("body: {}", body);
-            REQUIRE(response.status_code() == http::status::ok);
+            REQUIRE(response.get_status() == http::status::ok);
             REQUIRE(body == "OK !");
         }(),
         async_exec(ctx, stop_context.get_token()));
