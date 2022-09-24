@@ -142,7 +142,7 @@ namespace g6::http {
                 }
                 
                 uint64_t chunk_size = 0;
-                auto [_, ec] = std::from_chars(tmp_.data(), tmp_.data() + tmp_.size() - 2u, chunk_size);
+                auto [_, ec] = std::from_chars(tmp_.data(), tmp_.data() + tmp_.size() - 2u, chunk_size, 16);
                 tmp_.clear();
                 if (ec != std::errc{}) {
                     throw std::system_error{std::make_error_code(ec)};
