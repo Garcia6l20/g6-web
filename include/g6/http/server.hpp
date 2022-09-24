@@ -53,7 +53,7 @@ namespace g6 {
             try {
                 while (true) {
                     spdlog::debug("awaiting for new client...");
-                    auto [sock, address] = co_await net::async_accept(server.socket);
+                    auto [sock, address] = co_await async_with(net::async_accept(server.socket), stop.value());
                     static_assert(std::same_as<std::decay_t<decltype(sock)>, std::decay_t<decltype(server.socket)>>);
                     auto http_session = server_session<SocketT>{std::move(sock), address};
                     spdlog::info("client connected: {}", address);
