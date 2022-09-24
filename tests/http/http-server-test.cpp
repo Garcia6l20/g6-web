@@ -18,7 +18,6 @@ TEST_CASE("http server stop", "[g6::web::http]") try {
     spdlog::set_level(spdlog::level::debug);
     web::context ctx{};
     std::stop_source stop{};
-    std::stop_source stop_ctx{};
 
     auto server = web::make_server(ctx, web::proto::http, *from_string<net::ip_endpoint>("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
@@ -26,7 +25,6 @@ TEST_CASE("http server stop", "[g6::web::http]") try {
 
     sync_wait(
         [&]() -> task<> {
-            scope_guard _ = [&] { stop_ctx.request_stop(); };
             co_await web::async_serve(server, [&] {
                 return []<typename Session, typename Request>(Session &session, Request request) -> task<> {
                     FAIL("Should not be reached !");
@@ -40,7 +38,7 @@ TEST_CASE("http server stop", "[g6::web::http]") try {
             stop.request_stop();
             spdlog::info("stop requested");
         }(),
-        g6::async_exec(ctx, stop_ctx.get_token()));
+        g6::async_exec(ctx));
 
     spdlog::info("done");
 } catch (std::exception const &error) { FAIL(error.what()); }
@@ -49,7 +47,6 @@ TEST_CASE("http-server: basic request/response", "[g6::web::http]") {
     spdlog::set_level(spdlog::level::debug);
     web::context ctx{};
     std::stop_source stop_server{};
-    std::stop_source stop{};
 
     auto server = web::make_server(ctx, web::proto::http, *g6::from_string<net::ip_endpoint>("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
@@ -57,9 +54,6 @@ TEST_CASE("http-server: basic request/response", "[g6::web::http]") {
 
     sync_wait(
         [&]() -> task<> {
-            scope_guard _ = [&]() noexcept {//
-                stop.request_stop();
-            };
             co_await web::async_serve(server, [&] {
                 return [&]<typename Session, typename Request>(Session &session, Request request) -> task<> {
                     for (auto cookie : request.cookies()) {
@@ -92,14 +86,13 @@ TEST_CASE("http-server: basic request/response", "[g6::web::http]") {
             REQUIRE(response.get_status() == http::status::ok);
             REQUIRE(body == "OK !");
         }(),
-        g6::async_exec(ctx, stop.get_token()));
+        g6::async_exec(ctx));
 }
 
 TEST_CASE("http-server: chunked request/response", "[g6::web::http]") {
     spdlog::set_level(spdlog::level::debug);
     web::context ctx{};
     std::stop_source stop_server{};
-    std::stop_source stop{};
 
     auto server = web::make_server(ctx, web::proto::http, *g6::from_string<net::ip_endpoint>("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
@@ -107,9 +100,6 @@ TEST_CASE("http-server: chunked request/response", "[g6::web::http]") {
 
     sync_wait(
         [&]() -> task<> {
-            scope_guard _ = [&]() noexcept {//
-                stop.request_stop();
-            };
             co_await web::async_serve(server, [&] {
                 return [&]<typename Session, typename Request>(Session &session, Request request) -> task<> {
                     std::string body;
@@ -145,5 +135,5 @@ TEST_CASE("http-server: chunked request/response", "[g6::web::http]") {
             REQUIRE(response.get_status() == http::status::ok);
             REQUIRE(body == "Ola el mundo !!");
         }(),
-        g6::async_exec(ctx, stop.get_token()));
+        g6::async_exec(ctx));
 }

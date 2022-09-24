@@ -30,7 +30,7 @@ TEST_CASE("ws simple server: segmented", "[g6::web::ws]") {
     spdlog::set_level(spdlog::level::debug);
 
     web::context ctx{};
-    std::stop_source stop, stop_ctx;
+    std::stop_source stop;
 
     auto server = web::make_server(ctx, web::proto::ws, *from_string<net::ip_endpoint>("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
@@ -39,9 +39,6 @@ TEST_CASE("ws simple server: segmented", "[g6::web::ws]") {
 
     sync_wait(
         [&]() -> task<void> {
-            scope_guard _ = [&]() noexcept {//
-                stop_ctx.request_stop();
-            };
             co_await web::async_serve(server, [&] {
                 return []<typename Session>(Session session) -> task<void> {
                     std::string rx_body;
@@ -72,14 +69,14 @@ TEST_CASE("ws simple server: segmented", "[g6::web::ws]") {
             spdlog::info("client rx body: {}", rx_body);
             REQUIRE(rx_body == tx_body);
         }(),
-        async_exec(ctx, stop_ctx.get_token()));
+        async_exec(ctx));
 }
 
 TEST_CASE("ws simple server: segmented/generator like", "[g6::web::ws]") {
     spdlog::set_level(spdlog::level::debug);
 
     web::context ctx{};
-    std::stop_source stop, stop_ctx;
+    std::stop_source stop;
 
     auto server = web::make_server(ctx, web::proto::ws, *from_string<net::ip_endpoint>("127.0.0.1:0"));
     auto server_endpoint = *server.socket.local_endpoint();
@@ -88,9 +85,6 @@ TEST_CASE("ws simple server: segmented/generator like", "[g6::web::ws]") {
 
     sync_wait(
         [&]() -> task<void> {
-            scope_guard _ = [&]() noexcept {//
-                stop_ctx.request_stop();
-            };
             co_await web::async_serve(server, [&] {
                 return [&]<typename Session>(Session session) -> task<void> {
                     std::string rx_body;
@@ -129,7 +123,7 @@ TEST_CASE("ws simple server: segmented/generator like", "[g6::web::ws]") {
             spdlog::info("client rx body: {}", rx_body);
             REQUIRE(rx_body == total_body);
         }(),
-        async_exec(ctx, stop_ctx.get_token()));
+        async_exec(ctx));
 }
 
 TEST_CASE("g6::ws concurrent", "[g6::web::ws]") {
