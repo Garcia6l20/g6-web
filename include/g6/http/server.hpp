@@ -49,7 +49,7 @@ namespace g6 {
         template<template<typename> typename Server, typename SocketT, typename RequestHandlerBuilder>
         task<void> tag_invoke(tag_t<g6::web::async_serve>, Server<SocketT> &server,
                               RequestHandlerBuilder &&request_handler_builder) {
-            auto stop = co_await this_coro::get_context<std::stop_token>();
+            auto stop = co_await this_coro::get<std::stop_token>;
             try {
                 while (true) {
                     spdlog::debug("awaiting for new client...");
