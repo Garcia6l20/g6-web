@@ -115,7 +115,11 @@ namespace g6 {
         inline http::server<ssl::async_socket> tag_invoke(tag_t<g6::web::make_server>, g6::web::context &ctx,
                                                           web::proto::https_ const &, net::ip_endpoint endpoint,
                                                           const ssl::certificate &cert, const ssl::private_key &key) {
-            auto socket = net::open_socket(ctx, std::move(endpoint), cert, key);
+            auto socket = net::open_socket(ctx, net::proto::secure_tcp);
+            socket.bind(endpoint);
+            socket.set_certificate(cert);
+            socket.set_private_key(key);
+            socket.listen();
             return http::server{ctx, std::move(socket)};
         }
     }// namespace web

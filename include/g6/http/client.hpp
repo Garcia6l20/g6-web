@@ -123,7 +123,7 @@ namespace g6::net {
     task<http::client<Context, ssl::async_socket>>
     tag_invoke(tag_t<net::async_connect>, Context &context, const g6::web::proto::https_ &,
                const net::ip_endpoint &endpoint, ssl::verify_flags verify_flags = ssl::verify_flags::none) {
-        auto sock = net::open_socket(context, ssl::tcp_client);
+        auto sock = net::open_socket(context, proto::secure_tcp);
         sock.bind(net::ipv4_endpoint{});// TODO handle this for windows
         sock.host_name("localhost");
         sock.set_peer_verify_mode(ssl::peer_verify_mode::required);
