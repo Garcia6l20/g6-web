@@ -5,7 +5,7 @@ catch2/2.13.8
 fmt/8.1.1
 spdlog/1.10.0
 ctre/3.6
-mbedtls/2.25.0
+mbedtls/3.2.1
 nlohmann_json/3.9.1
 # boost/1.76.0
 
