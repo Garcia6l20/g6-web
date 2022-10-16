@@ -17,7 +17,7 @@
 
 using namespace g6;
 
-TEST_CASE("https simple server", "[g6::web::https]") {
+TEST_CASE("g6::web::https simple server", "[g6][web][https]") {
 
     spdlog::set_level(spdlog::level::debug);
 

@@ -5,7 +5,7 @@
 
 using namespace g6;
 
-TEST_CASE("json loading", "[g6::web::json]") {//
+TEST_CASE("g6::web::json loading", "[g6][web][json]") {//
     SECTION("simple json dict") {
         auto dict = json::load(std::string_view{R"({"value":42})"});
         print("{}\n", dict);
@@ -41,7 +41,7 @@ TEST_CASE("json loading", "[g6::web::json]") {//
     }
 }
 
-TEST_CASE("json::bug_fixes", "[g6][json][bug_fixes]") {
+TEST_CASE("g6::webjson: bug_fixes", "[g6][json][bug_fixes]") {
     SECTION("empty object") {
         auto result = json::load(R"([3,"79bO5qG8zczAET8hhd6t9f0qpeDmbnx7",{"0":{},"length":1}])").get<json::list>();
         REQUIRE(result.at(0) == 3.);

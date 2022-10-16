@@ -27,7 +27,7 @@ struct test_struct_4 {
     G6_JSON_FIELD(std::vector<test_struct_2>, arr){{{1}, {2}, {3}}};
 };
 
-TEST_CASE("json serilization", "[g6::web::json]") {//
+TEST_CASE("g6::web::json serilization", "[g6][web][json]") {//
     spdlog::set_level(spdlog::level::trace);
     SECTION("serialize") {
         spdlog::debug("json::serialize(test) = {}", json::serialize(test_struct_1{42}));
@@ -66,7 +66,7 @@ TEST_CASE("json serilization", "[g6::web::json]") {//
     }
 }
 
-TEST_CASE("json serilization - special types", "[g6::web::json]") {//
+TEST_CASE("g6::web::json serilization - special types", "[g6::web::json]") {//
     spdlog::set_level(spdlog::level::trace);
     SECTION("has_value") {
         struct test_opt {

@@ -5,10 +5,8 @@
 
 using namespace g6;
 
-TEST_CASE("json loading", "[g6::web::json]") {//
-    SECTION("Benchmarks") {
-        BENCHMARK("deserialization") { return json::load(std::string_view{R"({"value":42,"lst":[1,42.2,"oops"]})"}); };
-        auto data = json::load(std::string_view{R"({"value":42,"lst":[1,42.2,"oops"]})"});
-        BENCHMARK("serialization") { return json::dump(data); };
-    }
+TEST_CASE("g6::web::json loading benchmarks", "[g6][web][json]") {//
+    BENCHMARK("deserialization") { return json::load(std::string_view{R"({"value":42,"lst":[1,42.2,"oops"]})"}); };
+    auto data = json::load(std::string_view{R"({"value":42,"lst":[1,42.2,"oops"]})"});
+    BENCHMARK("serialization") { return json::dump(data); };
 }

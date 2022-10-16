@@ -90,7 +90,7 @@ TEST_CASE("http-server: basic request/response", "[g6::web::http]") {
 }
 
 TEST_CASE("http-server: chunked request/response", "[g6::web::http]") {
-    spdlog::set_level(spdlog::level::debug);
+    spdlog::set_level(spdlog::level::trace);
     web::context ctx{};
     std::stop_source stop_server{};
 
@@ -101,7 +101,7 @@ TEST_CASE("http-server: chunked request/response", "[g6::web::http]") {
     sync_wait(
         [&]() -> task<> {
             co_await web::async_serve(server, [&] {
-                return [&]<typename Session, typename Request>(Session &session, Request request) -> task<> {
+                return [&]<typename Socket, typename Request>(http::server_session<Socket> &session, Request request) -> task<> {
                     std::string body;
                     co_await net::async_recv(request, std::back_inserter(body));
                     spdlog::info("body: {}", body);

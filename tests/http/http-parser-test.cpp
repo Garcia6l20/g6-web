@@ -6,7 +6,7 @@
 
 using namespace g6;
 
-TEST_CASE("http::headers", "[g6][web][http]") {
+TEST_CASE("g6::http::headers", "[g6][web][http]") {
     SECTION("Accept-language") {
         http::headers m = {{"Accept-Language", "en"}, {"Hello", "world"}, {"hello", "guys"}};
         auto vals = m.values("accept-language");
@@ -81,7 +81,7 @@ std::tuple<bool, std::string> do_parse_seq(auto &parser, std::string_view input,
     return {res, std::move(body)};
 }
 
-TEST_CASE("http_parser requests", "[g6][web][http]") {
+TEST_CASE("g6::http::parser requests", "[g6][web][http]") {
     spdlog::set_level(spdlog::level::trace);
     SECTION("basic/no content") {
         std::string_view data = "GET / HTTP/1.1\r\n"
@@ -147,7 +147,7 @@ TEST_CASE("http_parser requests", "[g6][web][http]") {
     }
 }
 
-TEST_CASE("http_parser responses", "[g6][web][http]") {
+TEST_CASE("g6::http::parser responses", "[g6][web][http]") {
     spdlog::set_level(spdlog::level::trace);
     SECTION("basic") {
         std::string_view data = "HTTP/1.1 200 OK\r\n"

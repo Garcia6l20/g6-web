@@ -26,7 +26,7 @@ std::string make_random_string(size_t size) noexcept {
     return result;
 }
 
-TEST_CASE("ws simple server: segmented", "[g6::web::ws]") {
+TEST_CASE("g6::web::ws simple server: segmented", "[g6][web][ws]") {
     spdlog::set_level(spdlog::level::debug);
 
     web::context ctx{};
@@ -72,7 +72,7 @@ TEST_CASE("ws simple server: segmented", "[g6::web::ws]") {
         async_exec(ctx));
 }
 
-TEST_CASE("ws simple server: segmented/generator like", "[g6::web::ws]") {
+TEST_CASE("g6::web::ws simple server: segmented/generator like", "[g6][web][ws]") {
     spdlog::set_level(spdlog::level::debug);
 
     web::context ctx{};
@@ -126,7 +126,7 @@ TEST_CASE("ws simple server: segmented/generator like", "[g6::web::ws]") {
         async_exec(ctx));
 }
 
-TEST_CASE("g6::ws concurrent", "[g6::web::ws]") {
+TEST_CASE("g6::web::ws concurrent", "[g6][web][ws]") {
     spdlog::set_level(spdlog::level::debug);
 
     web::context ctx{};
