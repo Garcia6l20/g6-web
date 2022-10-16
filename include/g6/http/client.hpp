@@ -56,13 +56,6 @@ namespace g6::http {
             co_return net::async_recv(client);
         }
 
-        friend task<detail::chunked_request<Socket>> tag_invoke(tag_t<net::async_send>, client &client, std::string_view path,
-                                                        http::method method = http::method::get, http::headers hdrs = {}) {
-            detail::chunked_request<Socket> req{client.socket, method, path, std::move(hdrs)};
-            co_await net::async_send(req); // send http header
-            co_return std::move(req);
-        }
-
         template <typename Job>
         friend task<detail::response_parser<Socket>> tag_invoke(tag_t<net::async_send>, client &client, std::string_view path,
                                                         http::method method, http::headers hdrs, Job &&job)

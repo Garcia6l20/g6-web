@@ -52,19 +52,11 @@ namespace g6::http {
         friend server_request<Socket> tag_invoke<>(tag_t<net::async_recv>, server_session<Socket> &session);
 
         template<size_t extent>
-        friend task<size_t> tag_invoke(tag_t<net::async_send> const &tag_t, server_session &session,
+        friend task<size_t> tag_invoke(tag_t<net::async_send>, server_session &session,
                                        std::span<std::byte const, extent> data, http::status status = http::status::ok,
                                        http::headers headers = {}) {
             detail::basic_response resp{session.socket, data, status, std::move(headers)};
             co_return co_await net::async_send(resp);
-        }
-
-        friend task<detail::chunked_response<Socket>> tag_invoke(tag_t<net::async_send>, server_session &session,
-                                                                 http::status status = http::status::ok,
-                                                                 http::headers headers = {}) {
-            detail::chunked_response<Socket> resp{session.socket, status, std::move(headers)};
-            co_await net::async_send(resp);// send http header
-            co_return std::move(resp);
         }
 
         template<typename Job>
