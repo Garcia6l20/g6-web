@@ -121,7 +121,6 @@ namespace g6::json {
 
     template<typename IterT>
     value parse_number(IterT &begin, const IterT &end) {
-        thread_local static std::array<char, sizeof(double) * 2> tmp_chars;
         double result = 0.;
         auto [ptr, ec] = std::from_chars(&*begin, &*(end - 1), result);
         if (ec != std::errc{}) {
@@ -171,7 +170,7 @@ namespace g6::json {
     std::string dump(T const &data) {
         thread_local static std::array<char, sizeof(double) * 2> tmp_chars;
         return poly::match(
-            [&](null_t val) -> std::string {//
+            [&](null_t) -> std::string {//
                 return "null";
             },
             [&](boolean val) -> std::string {//
@@ -223,7 +222,6 @@ namespace g6::json {
     }
 
     inline std::string dump(value const &data) {
-        thread_local static std::array<char, sizeof(double) * 2> tmp_chars;
         return data | poly::visit | []<typename T>(T const &val) { return dump(val); };
     }
 

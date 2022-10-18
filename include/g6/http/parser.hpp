@@ -21,7 +21,7 @@ namespace g6::http {
         static constexpr inline auto npos = std::string_view::npos;
         using method_or_status = std::conditional_t<is_request, method, status>;
 
-        method_or_status method_or_status_;
+        method_or_status method_or_status_{};
         std::string path_or_smsg_;
         std::string proto_version_;
         headers headers_;
@@ -48,7 +48,7 @@ namespace g6::http {
                 return true;
             }
             input_iterator start = input.begin();
-            input_iterator end = input.begin() + input.size();
+            input_iterator end = input.begin() + std::ptrdiff_t(input.size());
             if ((state_ == state::preamble) and (start[0] == std::byte{'\r'}) and (start[1] == std::byte{'\n'})) {
                 start += 2; // RFC2616: 4.1
             }
@@ -102,8 +102,8 @@ namespace g6::http {
             for (auto hdr : get_headers("Cookie")) {//
                 for (auto [k, v] : hdr | std::views::split(';') | std::views::transform([](auto &&rng) {
                          auto kv = std::string_view{&*rng.begin(), size_t(std::ranges::distance(rng))}
-                                 | std::views::split('=') | std::views::transform([](auto &&rng) {
-                                       return std::string_view{&*rng.begin(), size_t(std::ranges::distance(rng))};
+                                 | std::views::split('=') | std::views::transform([](auto &&r) {
+                                       return std::string_view{&*r.begin(), size_t(std::ranges::distance(r))};
                                    });
                          auto it = kv.begin();
                          return std::pair{*it, *(++it)};

@@ -31,8 +31,7 @@ namespace g6::http { namespace detail {
         parser_base(parser_base &&other) noexcept : parser<is_request>{std::move(other)}, socket_{other.socket_} {}
 
         template<size_t extent>
-        friend task<size_t> tag_invoke(tag_t<net::async_recv>, parser_base &self, std::span<std::byte, extent> data,
-                                       std::stop_token stop = {}) {
+        friend task<size_t> tag_invoke(tag_t<net::async_recv>, parser_base &self, std::span<std::byte, extent> data) {
             bool done = false;
             size_t body_size = 0;
             do {

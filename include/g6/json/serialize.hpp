@@ -87,12 +87,10 @@ namespace g6::json {
                     (std::make_index_sequence<tl::num_aggregate_unique_fields<std::decay_t<T>>>());
                     return std::make_from_tuple<T>(std::move(tup));
                 } else if constexpr (tl::decays_to<V, list> and std::ranges::range<std::decay_t<T>>) {//
-                    auto rng = T{};
-                    rng.resize(val.size());
-                    auto it = std::begin(rng);
-                    for (auto const &item : val) {
-                        *it = unload_value<typename T::value_type>(item);
-                        ++it;
+                    T rng;
+                    rng.reserve(val.size());
+                    for (size_t ii = 0; ii < val.size(); ++ii) {
+                        rng.push_back(unload_value<typename T::value_type>(val.at(ii)));
                     }
                     return rng;
                 } else if constexpr (tl::decays_to<V, string> and from_stringable<T>) {
@@ -110,7 +108,8 @@ namespace g6::json {
             auto emplace_one = [&]<auto K, typename V>(poly::kw_arg<K, V> & value) {
                 const auto key = std::string_view{value.name};
                 if (obj.contains(key)) {
-                    value.value = unload_value<V>(std::move(obj.at(key)));
+                    auto const& val = obj.at(key);
+                    value.value = unload_value<V>(val);
                 } else if constexpr (not tl::specialization_of<V, std::optional>) {
                     throw missing_field_error{key};
                 }

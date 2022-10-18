@@ -160,9 +160,9 @@ namespace g6::http {
             auto size() const noexcept { return std::ranges::distance(view_); }
 
             auto &operator[](size_t index) {
-                if (index > size()) { throw std::out_of_range("no such index"); }
+                if (ssize_t(index) > size()) { throw std::out_of_range("no such index"); }
                 auto it = view_.begin();
-                std::ranges::advance(it, index);
+                std::ranges::advance(it, ssize_t(index));
                 return *it;
             }
 

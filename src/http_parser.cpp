@@ -1,11 +1,15 @@
 #include <g6/http/parser.hpp>
 
+#include <cassert>
 namespace g6::http {
 
     template<bool is_request>
     status parser<is_request>::parse_status(std::string_view str) {
         std::uint16_t status_value = 0;
         auto [_, ec] = std::from_chars(str.begin(), str.end(), status_value);
+        if (ec != std::errc{}) {
+            throw std::system_error(static_cast<int>(ec), std::system_category(), "cannot parse status");
+        }
         switch (status_value) {
 #define XX(num, name, string) case num:
                 G6_HTTP_STATUS_MAP(XX)
@@ -130,8 +134,9 @@ namespace g6::http {
         if (has(flag::is_chunked)) {
             if (remaining_bytes_) {
                 // get previous uncomplete chunk
-                const size_t bytes = std::min(std::distance(start, end), ssize_t(remaining_bytes_));
-                remaining_bytes_ -= bytes;
+                const ssize_t bytes = std::min(std::distance(start, end), ssize_t(remaining_bytes_));
+                assert(bytes >= 0);
+                remaining_bytes_ -= size_t(bytes);
                 on_body({start, start + bytes}, cb);
                 start += bytes;
             } else if (get_line(start, end)) {
@@ -151,15 +156,15 @@ namespace g6::http {
                     start = end;
                     state_ = state::done;
                     return;
-                } else if ((start + chunk_size) < end) {
+                } else if ((start + ssize_t(chunk_size)) < end) {
                     // chunk full available
-                    on_body({start, start + chunk_size}, cb);
-                    start += chunk_size;
+                    on_body({start, start + ssize_t(chunk_size)}, cb);
+                    start += ssize_t(chunk_size);
                 } else {
                     // chunk uncomplete
                     const auto bytes = std::distance(start, end);
                     if (bytes > 0) {
-                        remaining_bytes_ = chunk_size - bytes;
+                        remaining_bytes_ = chunk_size - size_t(bytes);
                         on_body({start, end}, cb);
                         start = end;
                     } else {
@@ -169,10 +174,11 @@ namespace g6::http {
             }
         } else if(content_length_.has_value()) {
             auto byte_count = std::distance(start, end);
-            if (byte_count > remaining_bytes_) {
+            if (byte_count > std::ptrdiff_t(remaining_bytes_)) {
                 throw std::runtime_error("too much body data beeing parsed");
             }
-            remaining_bytes_ -= byte_count;
+            assert(byte_count >= 0);
+            remaining_bytes_ -= size_t(byte_count);
             on_body({start, end}, cb);
             if (remaining_bytes_ == 0) {
                 state_ = state::done;

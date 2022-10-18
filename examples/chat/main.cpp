@@ -57,7 +57,7 @@ std::string_view as_string_view(std::span<std::byte const> const &data) noexcept
     return {reinterpret_cast<char const *>(data.data()), data.size()};
 }
 
-int main(int argc, char **argv) {
+int main(int /*argc*/, char **/*argv*/) {
 #ifdef G6_WEB_DEBUG
     spdlog::set_level(spdlog::level::debug);
 #endif
@@ -77,7 +77,6 @@ int main(int argc, char **argv) {
     auto router = router::router{
         std::make_tuple(),// global context
         http::route::get<R"(/)">([&](router::context<http::server_session<net::async_socket>> session,
-                                     router::context<http::server_request<net::async_socket>> request,
                                      router::context<user_session> us) -> task<void> {
             if (!us->logged) {
                 http::headers hdrs{{"Location", "/login"}};// gcc bug ???
@@ -91,12 +90,10 @@ int main(int argc, char **argv) {
             }
         }),
         http::route::get<R"(/login)">(
-            [&](router::context<http::server_session<net::async_socket>> session,
-                router::context<http::server_request<net::async_socket>> request) -> task<void> {
+            [&](router::context<http::server_session<net::async_socket>> session) -> task<void> {
                 co_await net::async_send(*session, html::login, http::status::ok);
             }),
         http::route::post<R"(/login)">([&](router::context<http::server_session<net::async_socket>> session,
-                                           router::context<http::server_request<net::async_socket>> request,
                                            router::context<user_session> us,
                                            router::context<std::string> body) -> task<void> {
             auto jsn = json::load(*body).get<json::object>();

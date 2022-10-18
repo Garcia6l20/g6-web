@@ -31,8 +31,7 @@ namespace g6::ws {
     class rx_message;
 
     template<bool is_server, typename Socket>
-    inline task<rx_message<is_server, Socket>> tag_invoke(tag_t<net::async_recv>, connection<is_server, Socket> &conn,
-                                                          std::stop_token stop = {});
+    inline task<rx_message<is_server, Socket>> tag_invoke(tag_t<net::async_recv>, connection<is_server, Socket> &conn);
 
     template<bool is_server, typename Socket>
     task<size_t> tag_invoke(tag_t<net::async_send>, connection<is_server, Socket> &, std::span<std::byte const>);
@@ -58,18 +57,18 @@ namespace g6::ws {
         explicit rx_message(connection<is_server, Socket> &conn) noexcept : connection_{conn}, socket_{conn.socket_} {}
 
         friend task<rx_message<is_server, Socket>>
-        tag_invoke<>(tag_t<net::async_recv>, connection<is_server, Socket> &conn, std::stop_token stop);
+        tag_invoke<>(tag_t<net::async_recv>, connection<is_server, Socket> &conn);
 
         task<size_t> async_recv(std::span<std::byte> data) {
             auto guard = co_await async_lock(connection_.rx_mux_);
 
-            ssize_t remaining_size = header_.payload_length - current_payload_offset_;
+            auto remaining_size = ssize_t(header_.payload_length - current_payload_offset_);
             if (remaining_size <= 0) {
                 assert(!header_.fin);
             __get_header:
                 header_ = co_await header::receive(socket_);
                 current_payload_offset_ = 0;
-                remaining_size = header_.payload_length - current_payload_offset_;
+                remaining_size = ssize_t(header_.payload_length - current_payload_offset_);
                 connection_.debug("opcode: {}, fin: {}, len: {}", to_string(header_.opcode), header_.fin,
                               header_.payload_length);
                 if (header_.opcode == op_code::connection_close) {
@@ -236,7 +235,7 @@ namespace g6::ws {
     private:
         template<bool is_server_, typename Socket_>
         friend task<rx_message<is_server_, Socket_>> tag_invoke(tag_t<net::async_recv>,
-                                                                connection<is_server_, Socket_> &conn, std::stop_token);
+                                                                connection<is_server_, Socket_> &conn);
 
         friend task<async_guard> tag_invoke(tag_t<net::async_send>, connection &conn, std::span<std::byte const> data) {
             auto guard = co_await async_lock(conn.tx_mux_);
@@ -295,8 +294,7 @@ namespace g6::ws {
     };
 
     template<bool is_server, typename Socket>
-    task<rx_message<is_server, Socket>> tag_invoke(tag_t<net::async_recv>, connection<is_server, Socket> &conn,
-                                                   std::stop_token stop) {
+    task<rx_message<is_server, Socket>> tag_invoke(tag_t<net::async_recv>, connection<is_server, Socket> &conn) {
         co_return co_await conn.await();
     }
 }// namespace g6::ws

@@ -21,7 +21,7 @@ std::string make_random_string(size_t size) noexcept {
     std::string result;
     result.reserve(size);
     static std::mt19937 rng{size_t(time(nullptr) * getpid())};
-    std::ranges::generate_n(std::back_inserter(result), size,
+    std::ranges::generate_n(std::back_inserter(result), ssize_t(size),
                             [&]() { return alphanum[rng() % (sizeof(alphanum) - 1)]; });
     return result;
 }
@@ -137,10 +137,11 @@ TEST_CASE("g6::web::ws concurrent", "[g6][web][ws]") {
 
     spdlog::info("server listening at: {}", server_endpoint);
 
-    constexpr size_t n_bytes = 128 * 4 + 32;
-    constexpr size_t n_buf = 10;
-    constexpr size_t n_test = 10;
-    constexpr size_t n_job = 10;
+    static constexpr size_t n_bytes = 128 * 4 + 32;
+    (void) n_bytes; // GCC detect it as unused !??
+    static constexpr size_t n_buf = 10;
+    static constexpr size_t n_test = 10;
+    static constexpr size_t n_job = 10;
 
     auto test_id = 0;
     auto test = [](auto &session, auto id) -> task<> {

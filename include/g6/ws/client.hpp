@@ -17,7 +17,7 @@ namespace g6 {
         template<typename Context, typename Socket>
         class client : public connection<false, Socket> {
         public:
-            client(Context &context, Socket &&socket, net::ip_endpoint const &remote_endpoint) noexcept
+            client(Context &/*context*/, Socket &&socket, net::ip_endpoint const &remote_endpoint) noexcept
                 : connection<false, Socket>{std::forward<Socket>(socket), remote_endpoint} {}
 
             static std::string random_string(size_t len) {

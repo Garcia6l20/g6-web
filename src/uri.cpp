@@ -36,7 +36,7 @@ namespace g6::web {
         auto addr = g6::from_string<net::ip_address>(host);
         if (!addr) {//
             struct hostent *he = nullptr;
-            struct hostent he_data = {0};
+            struct hostent he_data = {nullptr, nullptr, 0, 0, nullptr};
             char buffer[2048] = {0};
             int errnum;
             char c_str[256];

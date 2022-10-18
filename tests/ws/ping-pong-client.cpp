@@ -40,10 +40,9 @@ int main(int, char **) {
             auto session = co_await net::async_connect(ctx, web::proto::ws, *endpoint, "/");
             constexpr std::string_view ping = "ping";
             co_await net::async_send(session, as_bytes(std::span{ping.data(), ping.size()}));
-            auto response = co_await net::async_recv(session, stop_source.get_token());
+            auto response = co_await net::async_recv(session);
             std::string rx_body;
             co_await net::async_recv(response, std::back_inserter(rx_body));
-            co_await net::async_close(session);
             spdlog::info("client rx body: {}", rx_body);
             co_await net::async_close(session);
         }(),

@@ -8,6 +8,7 @@
 #include <g6/router.hpp>
 
 #include <g6/coro/sync_wait.hpp>
+#include <g6/coro/async_with.hpp>
 #include <g6/scope_guard.hpp>
 
 
@@ -28,7 +29,7 @@ void term_handler(int) {
     spdlog::info("stop requested !");
 }
 
-int main(int argc, char **argv) {
+int main(int, char **) {
 
     std::signal(SIGINT, term_handler);
     std::signal(SIGTERM, term_handler);
@@ -71,15 +72,15 @@ int main(int argc, char **argv) {
             auto session = co_await net::async_connect(ctx, web::proto::ws, *endpoint, "/chat");
 
             while (true) {
-                auto response = co_await net::async_recv(session, g_stop_source.get_token());
+                auto response = co_await net::async_recv(session);
                 std::string body;
                 co_await net::async_recv(response, std::back_inserter(body));
                 co_await responder(body, std::ref(session));
             }
 
             spdlog::info("done");
-        }(),
-        async_exec(ctx, g_stop_source.get_token()));
+        }() | async_with(g_stop_source.get_token()),
+        async_exec(ctx));
 
     return 0;
 }

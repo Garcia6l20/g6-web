@@ -124,8 +124,7 @@ int main(int argc, char **argv) {
     auto router = router::router{
         std::make_tuple(),// global context
         http::route::get<R"(/(.*))">([&](std::string_view path,
-                                         router::context<http::server_session<net::async_socket>> session,
-                                         router::context<http::server_request<net::async_socket>> request)
+                                         router::context<http::server_session<net::async_socket>> session)
                                          -> task<void> {
             spdlog::info("get: {}", (root_path / path).string());
             if (fs::is_directory(root_path / path)) {

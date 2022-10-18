@@ -10,7 +10,7 @@ using namespace g6;
 struct test_struct_1 {
     G6_JSON_FIELD(int, a){1};
     G6_JSON_FIELD(bool, b){true};
-    G6_JSON_FIELD(float, c){42.2};
+    G6_JSON_FIELD(float, c){42.2f};
     G6_JSON_FIELD(std::string, d){"hello"};
 };
 
@@ -37,14 +37,14 @@ TEST_CASE("g6::web::json serilization", "[g6][web][json]") {//
     }
     SECTION("deserialize") {
         SECTION("simple") {
-            test_struct_1 result = json::deserialize<test_struct_1>(json::serialize(test_struct_1{42, false, 43.3, "ok"}));
+            test_struct_1 result = json::deserialize<test_struct_1>(json::serialize(test_struct_1{42, false, 43.3f, "ok"}));
             REQUIRE(result.a == 42);
             REQUIRE(result.b == false);
             REQUIRE(result.c == 43.3f);
             REQUIRE(result.d == "ok");
         }
         SECTION("nested") {
-            test_struct_2 result = json::deserialize<test_struct_2>(json::serialize(test_struct_2{42, {42, false, 43.3, "ok"}}));
+            test_struct_2 result = json::deserialize<test_struct_2>(json::serialize(test_struct_2{42, {42, false, 43.3f, "ok"}}));
             REQUIRE(result.num == 42);
             REQUIRE(result.sub->a == 42);
             REQUIRE(result.sub->b == false);
@@ -88,6 +88,7 @@ TEST_CASE("g6::web::json serilization - special types", "[g6::web::json]") {//
             G6_JSON_FIELD(double, man_dbl);
         };
         auto data = json::serialize(test_opt{
+            .opt_dbl = std::nullopt,
             .man_dbl = 43.3
         });
         spdlog::debug("test_opt: {}", data);

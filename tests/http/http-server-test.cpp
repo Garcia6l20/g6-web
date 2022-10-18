@@ -26,7 +26,7 @@ TEST_CASE("http server stop", "[g6::web::http]") try {
     sync_wait(
         [&]() -> task<> {
             co_await web::async_serve(server, [&] {
-                return []<typename Session, typename Request>(Session &session, Request request) -> task<> {
+                return []<typename Session, typename Request>(Session &, Request) -> task<> {
                     FAIL("Should not be reached !");
                     co_return;
                 };

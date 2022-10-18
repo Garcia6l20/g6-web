@@ -31,9 +31,6 @@ namespace g6::http {
     template<typename Context, typename Socket>
     class client {
     public:
-        Socket socket;
-
-
         auto const &remote_endpoint() const noexcept { return remote_endpoint_; }
 
         client(Context &context, Socket &&socket, net::ip_endpoint const &remote_endpoint)
@@ -41,6 +38,7 @@ namespace g6::http {
 
     protected:
         Context &context_;
+        Socket socket;
         net::ip_endpoint remote_endpoint_;
 
         friend auto &tag_invoke(tag_t<web::get_context>, client &client) { return client.context_; }
