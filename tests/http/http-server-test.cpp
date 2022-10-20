@@ -48,7 +48,7 @@ TEST_CASE("http-server: basic request/response", "[g6::web::http]") {
     web::context ctx{};
     std::stop_source stop_server{};
 
-    auto server = web::make_server(ctx, web::proto::http, *g6::from_string<net::ip_endpoint>("127.0.0.1:0"));
+    auto server = web::make_server(ctx, web::proto::http, net::ipv4_endpoint{});
     auto server_endpoint = *server.socket.local_endpoint();
     spdlog::info("server listening at: {}", server_endpoint);
 
@@ -63,8 +63,8 @@ TEST_CASE("http-server: basic request/response", "[g6::web::http]") {
                     co_await net::async_recv(request, std::back_inserter(body));
                     spdlog::info("body: {}", body);
                     REQUIRE(body == "Hello !");
-                    http::headers hdrs{{"Set-Cookie", "one=1"}, {"Set-Cookie", "two=2"}};
-                    co_await net::async_send(session, std::string_view{"OK !"}, http::status::ok, std::move(hdrs));
+                    http::headers headers{{"Set-Cookie", "one=1"}, {"Set-Cookie", "two=2"}};
+                    co_await net::async_send(session, body, http::status::ok, std::move(headers));
                 };
             });
         }() | async_with(stop_server.get_token()),
@@ -84,7 +84,7 @@ TEST_CASE("http-server: basic request/response", "[g6::web::http]") {
             }
             spdlog::info("body: {}", body);
             REQUIRE(response.get_status() == http::status::ok);
-            REQUIRE(body == "OK !");
+            REQUIRE(body == "Hello !");
         }(),
         g6::async_exec(ctx));
 }

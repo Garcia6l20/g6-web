@@ -1,26 +1,22 @@
 # g6 web library
 
-> An unifex-based web framework
+> A g6-coro web framework
 
 ## Simple server example
 
 ```cpp
 auto server = 
-  make_server(ctx,
-              web::proto::http,
-              *net::ip_endpoint::from_string("127.0.0.1:4242"))
-co_await async_serve(
-  server, server_stop_source.get_token(),
-  [&]<typename Session>(Session &session) {
-    return [&session](auto request) -> task<void> {
-      while (net::has_pending_data(request)) {
-        auto body = co_await net::async_recv(request);
-        spdlog::info("body: {}", std::string_view{
-            reinterpret_cast<char *>(body.data()), body.size()});
-      }
-      co_await net::async_send(session, http::status::ok, as_bytes(span{"OK !", 4}));
-    };
-  );
+  make_server(ctx, web::proto::http, net::ipv4_endpoint{{127, 0, 0, 1}, 4242});
+auto server_endpoint = *server.socket.local_endpoint();
+spdlog::info("server listening at: {}", server_endpoint);
+co_await web::async_serve(server, [&] {
+    return [&]<typename Session, typename Request>(Session &session, Request request) -> task<> {
+        std::string body;
+        co_await net::async_recv(request, std::back_inserter(body));
+        spdlog::info("body: {}", body);
+        co_await net::async_send(session, body, http::status::ok);
+    }
+});
 ```
 
 ## Simple client example
@@ -28,17 +24,13 @@ co_await async_serve(
 ```cpp
 auto session =
     co_await net::async_connect(ctx, web::proto::http,
-                                *net::ip_endpoint::from_string("127.0.0.1:4242"));
-auto response = co_await net::async_send(
-    session, "/", http::method::post, as_bytes(span{"Hello !", 7}));
-
-std::string body_str;
-while (net::has_pending_data(response)) {
-  auto body = co_await net::async_recv(response);
-  body_str += std::string_view{reinterpret_cast<char *>(body.data()),
-                               body.size()};
-}
-spdlog::info("body: {}", body_str);
+                                net::ipv4_endpoint{{127, 0, 0, 1}, 4242});
+auto response =
+    co_await net::async_send(client, std::string_view{"Hello !"}, "/", http::method::post);
+spdlog::info("status: {}", response.get_status());
+std::string body;
+co_await net::async_recv(response, std::back_inserter(body));
+spdlog::info("body: {}", body);
 ```
 
 ## More complex examples:
@@ -49,19 +41,14 @@ spdlog::info("body: {}", body_str);
 
 ## Build
 
-```bash
-mkdir build && cd build
-conan install .. --build=missing
-cmake ..
-cmake --build
-```
+:warning: Dont try to build it directly, use [g6](https://github.com/Garcia6l20/g6) superproject instead !
+Enable it with by setting *G6_WITH_WEB* cache variable to *ON*.
 
 ## Features
 
 - [x] HTTP 1.1 server
 - [x] HTTP 1.1 client
 - [x] HTTP router
-- [x] Chunked transfers (server download)
-- [ ] Chunked transfers (client upload)
+- [x] Chunked transfers
 - [x] Websocket server
 - [x] Websocket client
