@@ -44,7 +44,7 @@ int main(int, char **) {
             std::string rx_body;
             co_await net::async_recv(response, std::back_inserter(rx_body));
             spdlog::info("client rx body: {}", rx_body);
-            co_await net::async_close(session);
+            co_await async_close(session);
         }(),
         async_exec(ctx, stop_source.get_token()));
 

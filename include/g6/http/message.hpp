@@ -6,6 +6,7 @@
 
 #include <g6/http/parser.hpp>
 #include <g6/net/net_cpo.hpp>
+#include <g6/coro/cpo/file.hpp>
 
 #include <fmt/format.h>
 
@@ -18,7 +19,7 @@ namespace g6::http { namespace detail {
     struct parser_base;
 
     template<typename Socket, bool is_request>
-    inline bool tag_invoke(tag_t<g6::net::has_pending_data>,
+    inline bool tag_invoke(tag_t<g6::has_pending_data>,
                            g6::http::detail::parser_base<Socket, is_request> &) noexcept;
 
     template<typename Socket, bool is_request>
@@ -49,7 +50,7 @@ namespace g6::http { namespace detail {
             co_return body_size;
         }
 
-        friend bool tag_invoke(tag_t<g6::net::has_pending_data>,
+        friend bool tag_invoke(tag_t<g6::has_pending_data>,
                                g6::http::detail::parser_base<Socket, is_request> &self) noexcept {
             return not bool(self);
         }
@@ -183,7 +184,7 @@ namespace g6::http { namespace detail {
              * @brief Close a request chunked message
              * @returns The response parser
              */
-        friend task<response_parser<Socket>> tag_invoke(tag_t<net::async_close>,
+        friend task<response_parser<Socket>> tag_invoke(tag_t<async_close>,
                                                         chunked_message &self) requires(is_request) {
             co_await net::async_send(self.socket, std::string_view{"0\r\n\r\n"});
             self.closed = true;
@@ -193,7 +194,7 @@ namespace g6::http { namespace detail {
         /**
              * @brief Close a response chunked message
              */
-        friend task<void> tag_invoke(tag_t<net::async_close>, chunked_message &self) requires(!is_request) {
+        friend task<void> tag_invoke(tag_t<async_close>, chunked_message &self) requires(!is_request) {
             co_await net::async_send(self.socket, std::string_view{"0\r\n\r\n"});
             self.closed = true;
         }

@@ -42,7 +42,7 @@ TEST_CASE("g6::web::ws simple server: segmented", "[g6][web][ws]") {
             co_await web::async_serve(server, [&] {
                 return []<typename Session>(Session session) -> task<void> {
                     std::string rx_body;
-                    while (net::has_pending_data(session)) {
+                    while (has_pending_data(session)) {
                         auto message = co_await net::async_recv(session);
                         co_await net::async_recv(message, std::back_inserter(rx_body));
                         if (rx_body.size()) {
@@ -65,7 +65,7 @@ TEST_CASE("g6::web::ws simple server: segmented", "[g6][web][ws]") {
             auto response = co_await net::async_recv(session);
             std::string rx_body;
             co_await net::async_recv(response, std::back_inserter(rx_body));
-            co_await net::async_close(session);
+            co_await async_close(session);
             spdlog::info("client rx body: {}", rx_body);
             REQUIRE(rx_body == tx_body);
         }(),
@@ -88,7 +88,7 @@ TEST_CASE("g6::web::ws simple server: segmented/generator like", "[g6][web][ws]"
             co_await web::async_serve(server, [&] {
                 return [&]<typename Session>(Session session) -> task<void> {
                     std::string rx_body;
-                    while (net::has_pending_data(session)) {
+                    while (has_pending_data(session)) {
                         auto message = co_await net::async_recv(session);
                         co_await net::async_recv(message, std::back_inserter(rx_body));
                         if (rx_body.size()) {
@@ -119,7 +119,7 @@ TEST_CASE("g6::web::ws simple server: segmented/generator like", "[g6][web][ws]"
             auto response = co_await net::async_recv(session);
             std::string rx_body;
             co_await net::async_recv(response, std::back_inserter(rx_body));
-            co_await net::async_close(session);
+            co_await async_close(session);
             spdlog::info("client rx body: {}", rx_body);
             REQUIRE(rx_body == total_body);
         }(),
@@ -180,7 +180,7 @@ TEST_CASE("g6::web::ws concurrent", "[g6][web][ws]") {
         std::vector<task<>> tests{n_test};
         std::ranges::generate(tests, [&] { return test(session, ++test_id); });
         co_await when_all(std::move(tests));
-        co_await net::async_close(session);
+        co_await async_close(session);
     };
 
     sync_wait(
@@ -196,7 +196,7 @@ TEST_CASE("g6::web::ws concurrent", "[g6][web][ws]") {
                 return [&]<typename Session>(Session session) -> task<void> {
                     auto id = ++n_session;
                     std::string rx_body;
-                    while (net::has_pending_data(session)) {
+                    while (has_pending_data(session)) {
                         auto message = co_await net::async_recv(session);
                         co_await net::async_recv(message, std::back_inserter(rx_body));
                         if (rx_body.size()) {

@@ -119,7 +119,7 @@ int main(int /*argc*/, char **/*argv*/) {
             spawn([](auto session, auto &all_sessions, const std::string username) -> task<void> {
                 all_sessions.push_front(&session);
                 spdlog::info("websocket connection started...");
-                while (net::has_pending_data(session)) try {
+                while (has_pending_data(session)) try {
                         auto message = co_await net::async_recv(session);
                         std::string body;
                         co_await net::async_recv(message, std::back_inserter(body));

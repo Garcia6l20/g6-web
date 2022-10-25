@@ -130,7 +130,7 @@ namespace g6::ws {
             return msg.async_recv(data);
         }
 
-        friend bool tag_invoke(tag_t<net::has_pending_data>, rx_message &msg) {
+        friend bool tag_invoke(tag_t<has_pending_data>, rx_message &msg) {
             return !msg.header_.fin || msg.current_payload_offset_ < msg.header_.payload_length;
         }
     };
@@ -175,7 +175,7 @@ namespace g6::ws {
             }
         }
 
-        friend task<> tag_invoke(tag_t<net::async_close>, tx_message &msg) {
+        friend task<> tag_invoke(tag_t<async_close>, tx_message &msg) {
             if (not msg.header_.fin) {
                 msg.header_.fin = true;
                 msg.header_.opcode = op_code::continuation_frame;
@@ -253,11 +253,11 @@ namespace g6::ws {
             auto guard = co_await async_lock(conn.tx_mux_);
             tx_message<is_server, Socket> msg{conn};
             co_await job(msg);
-            co_await net::async_close(msg);
+            co_await async_close(msg);
             co_return std::move(guard);
         }
 
-        friend task<> tag_invoke(tag_t<net::async_close>, connection &self,
+        friend task<> tag_invoke(tag_t<async_close>, connection &self,
                                  status_code reason = status_code::normal_closure) {
             if (not self.close_sent_) {
                 auto guard = co_await async_lock(self.tx_mux_);
@@ -283,7 +283,7 @@ namespace g6::ws {
 
         task<rx_message<is_server, Socket>> await() { co_return rx_message<is_server, Socket>{*this}; }
 
-        friend bool tag_invoke(tag_t<net::has_pending_data>, connection &self) {
+        friend bool tag_invoke(tag_t<has_pending_data>, connection &self) {
             return self.status_ == status_code::undefined;
         }
 

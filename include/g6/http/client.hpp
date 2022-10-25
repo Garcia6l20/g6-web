@@ -63,7 +63,7 @@ namespace g6::http {
             detail::chunked_request<Socket> req{client.socket, method, path, std::move(hdrs)};
             co_await net::async_send(req); // send http header
             co_await job(req);
-            co_return co_await net::async_close(req);
+            co_return co_await async_close(req);
         }
 
         template <typename Job>
